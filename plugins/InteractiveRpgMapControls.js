@@ -1,8 +1,8 @@
 /*:
  * @plugindesc InteractiveRpgMap Controls
  * @target MV
- * @author  Soczó Kristóf
- * @version 1.0
+ * @author  Soczó Kristóff
+ * @version 1.1
  *
  * @param openMapKey    @default q
  * @param zoomInKey     @default numpad+
