@@ -40,7 +40,6 @@ jobs:
           production-branch: release
           production-deploy: true
           deploy-message: "Auto-deploy from GitHub Actions"
-          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          netlify-site-id: edde862c-4cfd-4e03-a644-0ae7431b68ce
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: edde862c-4cfd-4e03-a644-0ae7431b68ce
