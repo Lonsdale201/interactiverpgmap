@@ -36,10 +36,17 @@
  *
  * @param openSound
  * @parent ---Map Settings---
- * @text Play Sound
+ * @text Open map Sound
  * @type file
  * @dir audio/se
  * @desc Sound effect to play when the map opens.
+ *
+ * @param closeSound
+ * @parent ---Map Settings---
+ * @text Close map Sound
+ * @type file
+ * @dir audio/se
+ * @desc Sound effect to play when the map closed.
  *
  * @param showMapInMenu
  * @parent ---Map Settings---
@@ -362,7 +369,8 @@
   const MAP_WIN_H_PCT = Number(P("mapWindowHeightPct") || 75);
   const SHOW_IN_MENU = P("showMapInMenu") === "true";
   const MENU_NAME = P("mapMenuName") || "Map";
-  const OPEN_SE = P("openSound");
+  const OPEN_SE = (P("openSound") || "").replace(/\.(ogg|m4a|wav)$/i, "");
+  const CLOSE_SE = (P("closeSound") || "").replace(/\.(ogg|m4a|wav)$/i, "");
 
   const USE_CUSTOM_MARKER = P("useCustomPlayerMarker") === "true";
   const CUSTOM_MARKER_IMAGE = P("customPlayerMarkerImage") || "";
@@ -688,9 +696,9 @@
     }
 
     // ha van konfig, először lejátsszuk a beállított SE-t (ha meg van adva)
-    if (OPEN_SE) {
-      AudioManager.playSe({ name: OPEN_SE, pan: 0, pitch: 100, volume: 90 });
-    }
+    // if (OPEN_SE) {
+    //   AudioManager.playSe({ name: OPEN_SE, pan: 0, pitch: 100, volume: 90 });
+    // }
 
     // aztán folytatjuk a core create-logikát
     _SceneInt_create.call(this);
@@ -1205,6 +1213,15 @@
     // --- eredeti update
     Scene_MenuBase.prototype.update.call(this);
     if (Input.isTriggered("cancel") || Input.isTriggered(MAP_KEY)) {
+      console.log("◀️ Closing Map SE:", CLOSE_SE);
+      if (CLOSE_SE) {
+        AudioManager.playSe({
+          name: CLOSE_SE,
+          pan: 0,
+          pitch: 100,
+          volume: AudioManager.seVolume,
+        });
+      }
       SceneManager.pop();
       return;
     }
@@ -1260,34 +1277,38 @@
   };
 
   /* --------------- 2) KÖZÖS segédfüggvény --------------- */
-  /* ezt a „Utilities” rész után (pl. a clamp függvény alá) szúrd be */
 
   function handleMapOpen() {
-    const cfg = findCfg(); // 1) van-e bejegyzés?
+    const cfg = findCfg();
     if (cfg) {
-      // → VAN
       if (!canOpenInteractiveMap(cfg)) {
-        //   de nincs jog
         const msg = getOpenInteractiveMapFailureMessage(cfg);
         if (msg) {
           $gameMessage.add(
             Window_Base.prototype.convertEscapeCharacters.call(this, msg)
           );
         }
-        return; //   <- sosem jön fallback
+        return;
       }
-      SceneManager.push(Scene_InteractiveMap); // jogosultság oké
+      // → ide szúrd be a logot és a SE-t:
+      console.log("▶️ Opening Map SE:", OPEN_SE);
+      if (OPEN_SE) {
+        AudioManager.playSe({
+          name: OPEN_SE,
+          pan: 0,
+          pitch: 100,
+          volume: AudioManager.seVolume,
+        });
+      }
+      SceneManager.push(Scene_InteractiveMap);
       return;
     }
 
-    /* 2) NINCS bejegyzés ehhez a pályához */
-    if (!ENABLE_FALLBACK) return; // global off → semmi
+    if (!ENABLE_FALLBACK) return;
 
     if (FALLBACK_IMG) {
-      // statikus kép
       SceneManager.push(Scene_FallbackMap);
     } else {
-      // csak szöveg
       const txt = Window_Base.prototype.convertEscapeCharacters.call(
         this,
         TEXT_NO_MAP
