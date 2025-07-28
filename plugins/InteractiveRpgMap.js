@@ -34,6 +34,17 @@
  * @default true
  * @desc If ON, an undefined map loads fallback image / text. If OFF, nothing happens when a map is undefined.
  *
+ * @param scaleMode
+ * @text Image Scale Mode
+ * @type select
+ * @option Cover (fill window)
+ * @value cover
+ * @option Contain (fit; letterbox)
+ * @value contain
+ * @option No Upscale (1:1 max)
+ * @value noupscale
+ * @default cover
+ *
  * @param openSound
  * @parent ---Map Settings---
  * @text Open map Sound
@@ -174,6 +185,13 @@
  * @dir img/system
  * @desc Ha be van állítva, csak a térkép-ablak ezt a skinsheetet használja.
  *
+ * @param letterboxUnderlayImage
+ * @parent ---Map Window Design---
+ * @text Letterbox Underlay Image
+ * @type file
+ * @dir img/system
+ * @desc Csak globális. Contain/NoUpscale módban, windowos nézetnél a térkép ALATT kirajzolt háttérréteg (a letterbox sávokba).
+ *
  * @param customFrameImage
  * @parent ---Map Window Design---
  * @text Frame Image
@@ -264,6 +282,19 @@
  * @type file
  * @dir img/maps
  * @desc Add the map image. If it does not exist, create the maps folder within the IMG folder!
+ *
+ * @param scaleMode
+ * @text Scale Mode (override)
+ * @type select
+ * @option (use global)
+ * @value
+ * @option Cover (fill window)
+ * @value cover
+ * @option Contain (fit; letterbox)
+ * @value contain
+ * @option No Upscale (1:1 max)
+ * @value noupscale
+ * @default
  *
  * @param pixelsPerTile
  * @text Pixels Per Tile (override)
@@ -379,6 +410,11 @@
   const OPEN_SE = (P("openSound") || "").replace(/\.(ogg|m4a|wav)$/i, "");
   const CLOSE_SE = (P("closeSound") || "").replace(/\.(ogg|m4a|wav)$/i, "");
 
+  const UNDERLAY_IMG = P("letterboxUnderlayImage") || "";
+  const UNDERLAY_BMP = UNDERLAY_IMG
+    ? ImageManager.loadSystem(UNDERLAY_IMG)
+    : null;
+
   const USE_CUSTOM_MARKER = P("useCustomPlayerMarker") === "true";
   const CUSTOM_MARKER_IMAGE = P("customPlayerMarkerImage") || "";
   const DEFAULT_MARKER_COLOR = P("defaultMarkerColor") || "#FFFFFF";
@@ -387,6 +423,19 @@
   const MARKER_PULSE = P("markerPulse") === "true";
 
   const GLOBAL_PPT = Number(P("imagePixelsPerTile") || 0);
+
+  const GLOBAL_SCALE_MODE = (P("scaleMode") || "cover").toLowerCase();
+
+  function effScaleMode(cfg) {
+    // Map override -> ha üres, akkor a globális érvényesül
+    const m =
+      (cfg &&
+        String(cfg.scaleMode || "")
+          .trim()
+          .toLowerCase()) ||
+      GLOBAL_SCALE_MODE;
+    return m || "cover";
+  }
 
   const WINDOW_DESIGN = P("windowDesign"); // "default" | "none" | "customwindow"
   const MAP_WINDOW_SKIN = P("customMapWindowSkin") || "";
@@ -777,6 +826,11 @@
     this._playerDot.anchor.set(0.5);
     this._playerDot.visible = false;
     this._markerLayer.addChild(this._playerDot);
+    this._scaleMode = GLOBAL_SCALE_MODE;
+    this._drawDX = 0;
+    this._drawDY = 0;
+    this._drawW = this._cw;
+    this._drawH = this._ch;
   };
 
   Window_InteractiveMap.prototype.setBitmap = function (bmp) {
@@ -814,14 +868,47 @@
       const iw = this._bmp.width;
       const ih = this._bmp.height;
 
-      const baseCover = Math.max(cw / iw, ch / ih);
-      this._coverScale = baseCover * this._zoomLevels[this._zoomIdx];
+      // 1) alapskála a scaleMode szerint
+      const mode = this._scaleMode || "cover";
+      let base;
+      if (mode === "contain") {
+        base = Math.min(cw / iw, ch / ih);
+      } else if (mode === "noupscale") {
+        base = Math.min(1, Math.min(cw / iw, ch / ih));
+      } else {
+        // cover
+        base = Math.max(cw / iw, ch / ih);
+      }
 
-      let newW = Math.round(cw / this._coverScale);
-      let newH = Math.round(ch / this._coverScale);
+      // végső skála = alapskála × zoom
+      this._coverScale = base * this._zoomLevels[this._zoomIdx];
+
+      // 2) cél rajzterület (dest rect a contents‑en belül)
+      let drawW, drawH, drawDX, drawDY;
+      if (mode === "cover") {
+        drawW = cw;
+        drawH = ch;
+        drawDX = 0;
+        drawDY = 0;
+      } else {
+        // contain / noupscale – teljes képet skálázzuk és középre tesszük
+        drawW = Math.round(iw * base);
+        drawH = Math.round(ih * base);
+        drawDX = Math.floor((cw - drawW) / 2);
+        drawDY = Math.floor((ch - drawH) / 2);
+      }
+      this._drawW = drawW;
+      this._drawH = drawH;
+      this._drawDX = drawDX;
+      this._drawDY = drawDY;
+
+      // 3) forrás (crop) téglalap a bitmapon – a rajzterülethez mérve
+      let newW = Math.round(drawW / this._coverScale);
+      let newH = Math.round(drawH / this._coverScale);
       if (newW > iw) newW = iw;
       if (newH > ih) newH = ih;
 
+      // fókusz megtartása / középre igazítás
       let cX = this._camX + this._srcW / 2;
       let cY = this._camY + this._srcH / 2;
       if (forceCenter) {
@@ -837,6 +924,8 @@
       this._srcH = newH;
       this._camX = this._camTX = sx;
       this._camY = this._camTY = sy;
+
+      // akkor pánolható, ha tényleges vágás van (zoom>1 vagy cover)
       this._canPan = iw > newW || ih > newH;
 
       this._redraw();
@@ -847,16 +936,42 @@
   Window_InteractiveMap.prototype._redraw = function () {
     this.contents.clear();
     if (!this._bmp) return;
+
+    // ---- LETTERBOX UNDERLAY (globális cover módban, csak windowos nézetben) ----
+    const isWindowedUI = this._design !== "none";
+    if (UNDERLAY_BMP && isWindowedUI) {
+      // Ha még nem töltődött be, egy hullámvölgy: újra redraw, amikor már készen van
+      if (!UNDERLAY_BMP.isReady && !UNDERLAY_BMP.width) {
+        if (!this._underlayLoadHooked) {
+          this._underlayLoadHooked = true;
+          UNDERLAY_BMP.addLoadListener(() => this._redraw());
+        }
+      }
+      // Kirajzoljuk a teljes contents-területre, 100% cover módban:
+      this.contents.blt(
+        UNDERLAY_BMP,
+        0,
+        0, // forrás bitmap bal felső
+        UNDERLAY_BMP.width || 1,
+        UNDERLAY_BMP.height || 1, // forrásméret (stretch-hez)
+        0,
+        0, // cél bal felső a contents-ben
+        this._cw,
+        this._ch // cél méret: teljes contentsWidth/Height
+      );
+    }
+
+    // ---- TÉRKÉP kirajzolása ----
     this.contents.blt(
       this._bmp,
       this._camX,
       this._camY,
       this._srcW,
       this._srcH,
-      0,
-      0,
-      this._cw,
-      this._ch
+      this._drawDX,
+      this._drawDY,
+      this._drawW,
+      this._drawH
     );
   };
 
@@ -928,8 +1043,8 @@
 
     const s = this._coverScale;
     this._playerDot.visible = true;
-    this._playerDot.x = Math.round(relX * s);
-    this._playerDot.y = Math.round(relY * s);
+    this._playerDot.x = Math.round(this._drawDX + relX * s);
+    this._playerDot.y = Math.round(this._drawDY + relY * s);
 
     // Háromszög forgatása a játékos face irányába
     if (!USE_CUSTOM_MARKER && DEFAULT_MARKER_SHAPE === "triangle") {
@@ -1080,6 +1195,8 @@
         cfg: null,
         xform: null,
       });
+      // nyilak létrehozása a biztonság kedvéért (itt nem lesznek láthatók)
+      this._ensureScrollIndicators();
       return;
     }
 
@@ -1092,11 +1209,18 @@
     );
     bmp.addLoadListener(() => {
       this._win.setBitmap(bmp);
+
+      // scale mód (map override → globális)
+      this._win._scaleMode = effScaleMode(this._cfg);
+      // a setBitmap hívott már egy recalcot; a mód miatt futtassuk újra
+      this._win._recalcCamera(true);
+
       this._xform = calcXform(bmp, this._cfg);
       if (this._win._canPan) {
         const pos = worldToImage($gamePlayer.x, $gamePlayer.y, this._xform);
         this._win.centerOnImagePoint(pos.imgX, pos.imgY);
       }
+
       IRMap.emit("bitmap-loaded", {
         scene: this,
         win: this._win,
@@ -1125,7 +1249,7 @@
         labelSpr.x = winX + winW / 2;
         labelSpr.y = winY + this._win.padding;
 
-        // auto-scale down to at most 50% of window width
+        // auto-scale down (max 25% of window width – nálad így volt)
         if (autoScale) {
           labelBmp.addLoadListener(() => {
             const maxW = winW * 0.25;
@@ -1135,7 +1259,6 @@
             }
           });
         }
-
         this._overlayRoot.addChild(labelSpr);
       } else if (this._cfg.mapDisplayName) {
         // Text mode (existing)
@@ -1158,6 +1281,9 @@
         }
       });
 
+      // nyilak pozicionálása a rajzterülethez (letterbox figyelembe véve)
+      this._ensureScrollIndicators();
+
       IRMap.emit("scene-ready", {
         scene: this,
         win: this._win,
@@ -1166,30 +1292,8 @@
       });
     });
 
-    // --- scroll indicators (triangles) ---
-    this._triUp = new Sprite(TRI_UP);
-    this._triDown = new Sprite(TRI_DOWN);
-    this._triLeft = new Sprite(TRI_LEFT);
-    this._triRight = new Sprite(TRI_RIGHT);
-    const IND_PAD = 4;
-    const innerX = this._win.x + this._win.padding;
-    const innerY = this._win.y + this._win.padding;
-    const innerW = this._win.contentsWidth();
-    const innerH = this._win.contentsHeight();
-
-    this._triUp.x = innerX + (innerW - TRI_UP.width) / 2;
-    this._triUp.y = innerY + IND_PAD;
-    this._triDown.x = innerX + (innerW - TRI_DOWN.width) / 2;
-    this._triDown.y = innerY + innerH - TRI_DOWN.height - IND_PAD;
-    this._triLeft.x = innerX + IND_PAD;
-    this._triLeft.y = innerY + (innerH - TRI_LEFT.height) / 2;
-    this._triRight.x = innerX + innerW - TRI_RIGHT.width - IND_PAD;
-    this._triRight.y = innerY + (innerH - TRI_RIGHT.height) / 2;
-
-    this._overlayRoot.addChild(this._triUp);
-    this._overlayRoot.addChild(this._triDown);
-    this._overlayRoot.addChild(this._triLeft);
-    this._overlayRoot.addChild(this._triRight);
+    // ha még a bitmap töltődik, tegyük fel a nyilakat, hogy ne legyen undefined
+    this._ensureScrollIndicators();
   };
 
   Scene_InteractiveMap.prototype.terminate = function () {
@@ -1303,6 +1407,9 @@
     bmp.addLoadListener(() => {
       // 1) ablak tartalom frissítése
       win.setBitmap(bmp);
+      win._scaleMode = effScaleMode(cfg);
+      win._recalcCamera(true);
+      this._ensureScrollIndicators();
 
       // 2) transzform újraszámolás
       this._xform =
@@ -1336,6 +1443,7 @@
         try {
           this._overlayRoot.removeChildren();
         } catch (e) {}
+        this._ensureScrollIndicators();
       }
 
       // 5) Map label (szöveg vagy kép) újra kirakása
@@ -1406,6 +1514,41 @@
           to: cfg.editorMapName,
         });
     });
+  };
+
+  Scene_InteractiveMap.prototype._ensureScrollIndicators = function () {
+    const win = this._win;
+    const IND_PAD = 4;
+
+    // ha még nincsenek, hozzuk létre
+    if (!this._triUp) {
+      this._triUp = new Sprite(TRI_UP);
+      this._triDown = new Sprite(TRI_DOWN);
+      this._triLeft = new Sprite(TRI_LEFT);
+      this._triRight = new Sprite(TRI_RIGHT);
+    }
+
+    // a rajzterület (letterbox) belsejére igazítjuk
+    const innerX = win.x + win.padding + (win._drawDX || 0);
+    const innerY = win.y + win.padding + (win._drawDY || 0);
+    const innerW = win._drawW || win.contentsWidth();
+    const innerH = win._drawH || win.contentsHeight();
+
+    this._triUp.x = innerX + (innerW - this._triUp.width) / 2;
+    this._triUp.y = innerY + IND_PAD;
+    this._triDown.x = innerX + (innerW - this._triDown.width) / 2;
+    this._triDown.y = innerY + innerH - this._triDown.height - IND_PAD;
+    this._triLeft.x = innerX + IND_PAD;
+    this._triLeft.y = innerY + (innerH - this._triLeft.height) / 2;
+    this._triRight.x = innerX + innerW - this._triRight.width - IND_PAD;
+    this._triRight.y = innerY + (innerH - this._triRight.height) / 2;
+
+    // ha nincsenek benne a display listben, adjuk vissza
+    [this._triUp, this._triDown, this._triLeft, this._triRight].forEach(
+      (sp) => {
+        if (sp.parent !== this._overlayRoot) this._overlayRoot.addChild(sp);
+      }
+    );
   };
 
   // Kényelmi wrapper: név alapján
@@ -1579,29 +1722,34 @@
       win = win || IRMap.currentWindow();
       if (!win) return null;
 
-      const cam = win.cameraRect();
-      const s = win.coverScale();
+      // const cam = win.cameraRect();
+      // const s = win.coverScale();
 
-      const sx = win.x + win.padding + (imgX - cam.x) * s;
-      const sy = win.y + win.padding + (imgY - cam.y) * s;
+      // const sx = win.x + win.padding + (imgX - cam.x) * s;
+      // const sy = win.y + win.padding + (imgY - cam.y) * s;
+      // return { x: sx, y: sy };
+      const dxOff = win._drawDX || 0;
+      const dyOff = win._drawDY || 0;
+      const sx = win.x + win.padding + dxOff + (imgX - cam.x) * s;
+      const sy = win.y + win.padding + dyOff + (imgY - cam.y) * s;
       return { x: sx, y: sy };
     },
 
     screenToImage(scrX, scrY, win) {
       win = win || IRMap.currentWindow();
       if (!win) return null;
-
-      const dx = scrX - win.x - win.padding;
-      const dy = scrY - win.y - win.padding;
+      const dxOff = win._drawDX || 0;
+      const dyOff = win._drawDY || 0;
+      const dx = scrX - win.x - win.padding - dxOff;
+      const dy = scrY - win.y - win.padding - dyOff;
       if (
         dx < 0 ||
         dy < 0 ||
-        dx > win.contentsWidth() ||
-        dy > win.contentsHeight()
+        dx > (win._drawW || win.contentsWidth()) ||
+        dy > (win._drawH || win.contentsHeight())
       ) {
         return null;
       }
-
       const cam = win.cameraRect();
       const s = win.coverScale();
       const imgX = cam.x + dx / s;
@@ -1698,6 +1846,41 @@
       return;
     }
     IRMap.switchToMapById(id, opts);
+  };
+
+  IRMap.imageToWindow = function (imgX, imgY, win) {
+    win = win || IRMap.currentWindow();
+    if (!win) return null;
+
+    const cam = win.cameraRect();
+    const s = win.coverScale();
+
+    const dxOff = win._drawDX || 0;
+    const dyOff = win._drawDY || 0;
+    const sx = win.x + win.padding + dxOff + (imgX - cam.x) * s;
+    const sy = win.y + win.padding + dyOff + (imgY - cam.y) * s;
+    return { x: sx, y: sy };
+  };
+
+  IRMap.screenToImage = function (scrX, scrY, win) {
+    win = win || IRMap.currentWindow();
+    if (!win) return null;
+
+    const dxOff = win._drawDX || 0;
+    const dyOff = win._drawDY || 0;
+    const dx = scrX - win.x - win.padding - dxOff;
+    const dy = scrY - win.y - win.padding - dyOff;
+    const limW = win._drawW || win.contentsWidth();
+    const limH = win._drawH || win.contentsHeight();
+    if (dx < 0 || dy < 0 || dx > limW || dy > limH) {
+      return null;
+    }
+
+    const cam = win.cameraRect();
+    const s = win.coverScale();
+    const imgX = cam.x + dx / s;
+    const imgY = cam.y + dy / s;
+    return { imgX, imgY };
   };
 
   // expose
