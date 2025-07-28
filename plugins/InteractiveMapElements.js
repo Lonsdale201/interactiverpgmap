@@ -67,13 +67,6 @@
  * @type text
  * @desc Enter the name of the map where this Element can appear.
  *
- * @param relatedMapId
- * @text Related Map ID
- * @type number
- * @min 1
- * @default 0
- * @desc The ID of the editor map loaded by the open/load interaction. Required if interactMode=openload.
- *
  * @param --- Basic Setup ---
  * @desc Basic Setup
  * @default ------------------------------
@@ -161,10 +154,31 @@
  * @value options
  * @option Open portrait and option window
  * @value both
- * @option Teleport to related map
+ * @option Teleport to map
  * @value teleport
  * @option Open / load the related map
  * @value openload
+ * @option Run Common event
+ * @value runcommonevent
+ *
+ * @param relatedMapId
+ * @text Related Map ID
+ * @type number
+ * @min 1
+ * @default 0
+ * @desc The ID of the editor map loaded by the open/load interaction. Required if interactMode=openload.
+ *
+ * @param teleportLocation
+ * @text Teleport location
+ * @type text
+ * @default
+ * @desc Format: MAPNAME (X,Y) coordinate like: MAP002 (2,1) Left | You can add the face position too (Left, Right, Top Down or empty to retain) |  Required if interactMode=teleport.
+ *
+ * @param callCommonEvent
+ * @text Run Common event
+ * @type common_event
+ * @default
+ * @desc Format: Choose the Common event which want to run | Required if interactMode=runcommonevent.
  *
  */
 (() => {
@@ -213,28 +227,28 @@
     BOTH: "both",
     TELEPORT: "teleport",
     OPENLOAD: "openload",
+    RUNCOMMONEVENT: "runcommonevent",
   });
   function parseInteractModeRaw(v) {
     const s = String(v || "")
       .toLowerCase()
       .trim();
-    // ha rövid kulcsokat használsz a headerben, ez elég:
     if (
       s === "portrait" ||
       s === "options" ||
       s === "both" ||
       s === "teleport" ||
-      s === "openload"
+      s === "openload" ||
+      s === "runcommonevent"
     )
       return s;
-    // visszafelé kompat.: ha a hosszú szöveg szerepel a projektben
     if (s.includes("portrait and option")) return IM.BOTH;
     if (s.includes("open portrait")) return IM.PORTRAIT;
     if (s.includes("option")) return IM.OPTIONS;
     if (s.includes("teleport")) return IM.TELEPORT;
     if (s.includes("openload") || (s.includes("open") && s.includes("related")))
       return IM.OPENLOAD;
-    // alapértelmezés: portré (back‑compat)
+    if (s.includes("common") && s.includes("event")) return IM.RUNCOMMONEVENT;
     return IM.PORTRAIT;
   }
 
@@ -259,6 +273,8 @@
 
       interactMode: parseInteractModeRaw(j.interactMode),
       relatedMapId: +j.relatedMapId || 0,
+      teleportLocation: j.teleportLocation || "",
+      callCommonEvent: +j.callCommonEvent || 0,
     };
   });
 
@@ -694,17 +710,21 @@
         this._icon = new Sprite();
         this._initIconFromEvent(poi._ev);
       } else {
-        this._icon = new Sprite(
-          ImageManager.loadBitmap("img/interactivelements/", poi.img, 0, true)
+        // 1) töltsd be külön a bmp-et
+        const bmp = ImageManager.loadBitmap(
+          "img/interactivelements/",
+          poi.img,
+          0,
+          true
         );
-        this._icon.bitmap.addLoadListener(() => {
+        // 2) ebből hozd létre a sprite-ot
+        this._icon = new Sprite(bmp);
+        // 3) a bmp-en regisztráld a load-listenert
+        bmp.addLoadListener(() => {
           if (this._dead) return;
-          this._baseScale = Math.min(
-            poi.w / this._icon.bitmap.width,
-            poi.h / this._icon.bitmap.height,
-            1
-          );
-          this._icon._bottomPadPx = _calcBottomPad(this._icon.bitmap) || 0;
+          // a méretezésnél is a bmp.width / bmp.height‑et használd
+          this._baseScale = Math.min(poi.w / bmp.width, poi.h / bmp.height, 1);
+          this._icon._bottomPadPx = _calcBottomPad(bmp) || 0;
           this._updatePos();
         });
       }
@@ -1091,7 +1111,6 @@
         scene._imePoiSprites.push(new PoiSprite(p, scene, win));
     }
   }
-
   /* ----------------------------------[ 6. Kattintás + menü pozicionálás ]-- */
   function installClickHandler(scene, win) {
     if (scene._imeClickInstalled) return;
@@ -1107,7 +1126,8 @@
         s === "options" ||
         s === "both" ||
         s === "teleport" ||
-        s === "openload"
+        s === "openload" ||
+        s === "runcommonevent"
       )
         return s;
       if (s.includes("portrait and option")) return "both";
@@ -1119,6 +1139,7 @@
         (s.includes("open") && s.includes("related"))
       )
         return "openload";
+      if (s.includes("common") && s.includes("event")) return "runcommonevent";
       return "portrait";
     }
 
@@ -1257,16 +1278,20 @@
 
         // TELEPORT (placeholder)
         if (mode === "teleport") {
-          IME.emit("poi-teleport", { poi });
+          IME.emit("poi-teleport", { poi, location: poi.teleportLocation });
+          return;
         }
 
         // OPEN / LOAD RELATED MAP
         if (mode === "openload") {
-          if (!(poi.relatedMapId > 0)) {
-            $gameMessage.add("Related Map ID is not set for this element.");
-            return;
-          }
           IME.emit("poi-open-related", { poi, mapId: poi.relatedMapId });
+          return;
+        }
+
+        if (mode === "runcommonevent") {
+          const ceId = +poi.callCommonEvent || 0;
+          IME.emit("poi-run-common-event", { poi, commonEventId: ceId });
+          return;
         }
       }
 

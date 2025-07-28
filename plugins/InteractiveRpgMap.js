@@ -69,7 +69,7 @@
  * @param mapWindowWidthPct
  *
  * @parent ---Map Settings---
- * @text Map Window Width %
+ * @text Map Window Width %
  * @type number
  * @min 10
  * @max 100
@@ -78,7 +78,7 @@
  *
  * @param mapWindowHeightPct
  * @parent ---Map Settings---
- * @text Map Window Height %
+ * @text Map Window Height %
  * @type number
  * @min 10
  * @max 100
@@ -184,13 +184,14 @@
  * @type file
  * @dir img/system
  * @desc Ha be van állítva, csak a térkép-ablak ezt a skinsheetet használja.
- *
+ * 
  * @param letterboxUnderlayImage
  * @parent ---Map Window Design---
  * @text Letterbox Underlay Image
  * @type file
  * @dir img/system
  * @desc Csak globális. Contain/NoUpscale módban, windowos nézetnél a térkép ALATT kirajzolt háttérréteg (a letterbox sávokba).
+
  *
  * @param customFrameImage
  * @parent ---Map Window Design---
@@ -400,20 +401,14 @@
   // ---------------------------------------------------------------------------
   // Read params
   // ---------------------------------------------------------------------------
-  const TEXT_NO_MAP =
-    P("textIfNoMapFound") || "No map available for this area.";
+  let TEXT_NO_MAP = P("textIfNoMapFound") || "No map available for this area.";
   const ENABLE_FALLBACK = P("fallbackHandler") !== "false";
-  const FALLBACK_IMG = P("fallbackMapImage") || "";
+  let FALLBACK_IMG = params.fallbackMapImage || "";
   const MAP_WIN_W_PCT = Number(P("mapWindowWidthPct") || 75); // 10–100 %
   const MAP_WIN_H_PCT = Number(P("mapWindowHeightPct") || 75);
 
   const OPEN_SE = (P("openSound") || "").replace(/\.(ogg|m4a|wav)$/i, "");
   const CLOSE_SE = (P("closeSound") || "").replace(/\.(ogg|m4a|wav)$/i, "");
-
-  const UNDERLAY_IMG = P("letterboxUnderlayImage") || "";
-  const UNDERLAY_BMP = UNDERLAY_IMG
-    ? ImageManager.loadSystem(UNDERLAY_IMG)
-    : null;
 
   const USE_CUSTOM_MARKER = P("useCustomPlayerMarker") === "true";
   const CUSTOM_MARKER_IMAGE = P("customPlayerMarkerImage") || "";
@@ -421,6 +416,11 @@
   const DEFAULT_MARKER_SHAPE = P("defaultMarkerShape") || "circle";
   const DEFAULT_MARKER_SIZE = Number(P("defaultMarkerSize") || 12);
   const MARKER_PULSE = P("markerPulse") === "true";
+
+  const UNDERLAY_IMG = P("letterboxUnderlayImage") || "";
+  const UNDERLAY_BMP = UNDERLAY_IMG
+    ? ImageManager.loadSystem(UNDERLAY_IMG)
+    : null;
 
   const GLOBAL_PPT = Number(P("imagePixelsPerTile") || 0);
 
@@ -947,17 +947,17 @@
           UNDERLAY_BMP.addLoadListener(() => this._redraw());
         }
       }
-      // Kirajzoljuk a teljes contents-területre, 100% cover módban:
+
       this.contents.blt(
         UNDERLAY_BMP,
         0,
-        0, // forrás bitmap bal felső
-        UNDERLAY_BMP.width || 1,
-        UNDERLAY_BMP.height || 1, // forrásméret (stretch-hez)
         0,
-        0, // cél bal felső a contents-ben
+        UNDERLAY_BMP.width || 1,
+        UNDERLAY_BMP.height || 1,
+        0,
+        0,
         this._cw,
-        this._ch // cél méret: teljes contentsWidth/Height
+        this._ch
       );
     }
 
@@ -1363,11 +1363,15 @@
 
     // Hozzáférés ellenőrzés
     if (!IRMap.canOpenMap(mapId)) {
-      const msg =
-        IRMap.getOpenMapFailureMessage(mapId) || "You cannot open this map.";
-      $gameMessage.add(
-        Window_Base.prototype.convertEscapeCharacters.call(this, msg)
-      );
+      const msg = IRMap.getOpenMapFailureMessage(mapId) || "";
+      if (msg.trim()) {
+        // ha van üzenet → tegyük ki és zárjuk azonnal a Scene-t, hogy most látszódjon
+        $gameMessage.add(
+          Window_Base.prototype.convertEscapeCharacters.call(this, msg)
+        );
+        SceneManager.pop();
+      }
+      // ha nincs üzenet → csendben elutasítjuk, nem zárjuk be
       return;
     }
 
@@ -1584,6 +1588,14 @@
   /* --------------- 2) KÖZÖS segédfüggvény --------------- */
 
   function handleMapOpen() {
+    if (GLOBAL_DISABLED || DISABLED_SET.has($gameMap.mapId())) {
+      if (params.fallbackMapImage) {
+        SceneManager.push(Scene_FallbackMap);
+      } else {
+        $gameMessage.add(TEXT_NO_MAP);
+      }
+      return;
+    }
     const cfg = findCfg();
     if (cfg) {
       if (!canOpenInteractiveMap(cfg)) {
@@ -1881,6 +1893,56 @@
     const imgX = cam.x + dx / s;
     const imgY = cam.y + dy / s;
     return { imgX, imgY };
+  };
+
+  const DISABLED_SET = new Set();
+  let GLOBAL_DISABLED = false;
+
+  // wrap original canOpenMap
+  const _origCanOpenMap = IRMap.canOpenMap;
+  IRMap.canOpenMap = function (mapId) {
+    if (GLOBAL_DISABLED) return false;
+    if (DISABLED_SET.has(mapId)) return false;
+    return _origCanOpenMap.call(this, mapId);
+  };
+
+  // Plugin command intercept:
+  const _Game_Interpreter_pluginCommand =
+    Game_Interpreter.prototype.pluginCommand;
+  Game_Interpreter.prototype.pluginCommand = function (command, args) {
+    _Game_Interpreter_pluginCommand.apply(this, arguments);
+
+    if (command === "DisableMap") {
+      // Aktuális map vagy globális letiltás
+      if (args[0] && args[0].toLowerCase() === "current") {
+        DISABLED_SET.add($gameMap.mapId());
+      } else {
+        GLOBAL_DISABLED = true;
+      }
+      // Ha van második argumentum, az fallback
+      if (args[1]) {
+        // Ha szóközös szöveget is szeretnél, inkább csatlakozd az összeset:
+        const fb = args.slice(1).join(" ");
+        if (fb.match(/\.(png|jpe?g|bmp)$/i)) {
+          // képes fallback
+          params.fallbackMapImage = fb;
+          FALLBACK_IMG = fb;
+        } else {
+          // szöveges fallback
+          params.textIfNoMapFound = fb;
+          TEXT_NO_MAP = fb;
+        }
+      }
+    }
+
+    if (command === "EnableMap") {
+      if (args[0] && args[0].toLowerCase() === "current") {
+        DISABLED_SET.delete($gameMap.mapId());
+      } else {
+        GLOBAL_DISABLED = false;
+      }
+      // (nem kell itt fallbacket törölni, de ha szeretnéd, tehetsz ide is logikát)
+    }
   };
 
   // expose
