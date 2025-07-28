@@ -2,7 +2,7 @@
  * @plugindesc InteractiveRpgMap Controls
  * @target MV
  * @author  Soczó Kristóff
- * @version 1.1
+ * @version 1.2
  *
  * @param openMapKey    @default q
  * @param zoomInKey     @default numpad+
@@ -11,6 +11,7 @@
  * @param panRightKey   @default right
  * @param panUpKey      @default up
  * @param panDownKey    @default down
+ * @param backKey       @default backspace
  */
 /*============================================================================*/
 (() => {
@@ -21,12 +22,17 @@
     return;
   }
 
-  // a core-ból exportált konverter (lásd lejjebb)
-  const str2code =
+  const defaultStr2code =
     window.IRMap.str2code ||
     function (name) {
       return name.length === 1 ? name.toUpperCase().charCodeAt(0) : null;
     };
+  /** kiterjesztjük a “backspace”-t is */
+  const str2code = (name) => {
+    name = (name || "").toLowerCase();
+    if (name === "backspace") return 8;
+    return defaultStr2code(name);
+  };
 
   const MAP_KEY = "interactiveMap";
   const map = [
@@ -37,6 +43,7 @@
     [p("panRightKey"), "right"],
     [p("panUpKey"), "up"],
     [p("panDownKey"), "down"],
+    [p("backKey"), "mapBack"],
   ];
 
   map.forEach(([keyStr, action]) => {
