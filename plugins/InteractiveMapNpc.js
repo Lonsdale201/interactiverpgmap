@@ -61,12 +61,11 @@
  *
  * @help
  * Használat:
- *  - Event neve:  Valaki [IME NONAME]
- *  - Event Note/Comment: <IME NONAME>
- *  - Portré meta az aktív page Comment soraiban:
- *      IMENAME: Valaki
+ *  - Event Note/Comment: <IME> használhatod így is <IME NONAME> -> ilyenkor a térképen nem lesz ott az event neve
+ *  - Portré meta az aktív page Comment soraiban: (commentet használj hozzá a definíciókhoz)
+ *      IMENAME: Npc neve
  *      IMEDESC: Többsoros\nleírás támogatott.
- *      FACEIMG: Valaki.png
+ *      FACEIMG: Valaki.png (img/imecustomfaces) -> hozd létre hozzá a imecustomfaces mappát közvetlenül az img belül
  * Csak a JELENLEGI pályán lévő eventeket rajzolja, és a térképen a
  * játékossal azonos pálya megnyitásakor.
  */

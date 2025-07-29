@@ -35,6 +35,7 @@
  * @desc If ON, an undefined map loads fallback image / text. If OFF, nothing happens when a map is undefined.
  *
  * @param scaleMode
+ * @parent ---Map Settings---
  * @text Image Scale Mode
  * @type select
  * @option Cover (fill window)
@@ -234,6 +235,52 @@
  * @off No
  * @default false
  * @desc If ON, your custom frame will render above the map content (overlap).
+ * 
+ * ============================================================================
+ *  --- Top Level Window -------------------------------------------------------
+ * ============================================================================
+ *
+ * @param ---Top level Window---
+ * @default ------------------------------
+ *
+ * @param showTopLevelWindow
+ * @parent ---Top level Window---
+ * @text Show top level window
+ * @type boolean
+ * @on true
+ * @off false
+ * @default true
+ *
+ * @param topLevelWindowSkin
+ * @parent ---Top level Window---
+ * @text Top level window skin
+ * @type select
+ * @option Same as map Window
+ * @value same
+ * @option Default window
+ * @value default
+ * @option Custom window
+ * @value customwindow
+ * @default same
+ *
+ * @param topLevelCustomSkin
+ * @parent ---Top level Window---
+ * @text Custom window skin (img/system)
+ * @type file
+ * @dir img/system
+ *
+ * @param topLevelHeight
+ * @parent ---Top level Window---
+ * @text Window height (px)
+ * @type number
+ * @min 24
+ * @default 60
+ *
+ * @param topLevelElements
+ * @parent ---Top level Window---
+ * @text Top level elements
+ * @type text[]
+ * @default ["showmap"]
  *
  * ============================================================================
  *  --- GUI / Scroll Indicators ----------------------------------------------
@@ -458,6 +505,17 @@
   const GLOBAL_PPT = Number(P("imagePixelsPerTile") || 0);
 
   const GLOBAL_SCALE_MODE = (P("scaleMode") || "cover").toLowerCase();
+
+  // --- Top‑level window params -------------------------------------------------
+  const TL_SHOW = P("showTopLevelWindow") !== "false";
+  const TL_SKIN_MODE = (P("topLevelWindowSkin") || "same").toLowerCase();
+  const TL_CUSTOM_SKIN = P("topLevelCustomSkin") || "";
+  const TL_H = Number(P("topLevelHeight") || 60);
+  const TL_ELEMENTS = JSON.parse(P("topLevelElements") || "[]").map((e) =>
+    String(e || "")
+      .trim()
+      .toLowerCase()
+  );
 
   function effScaleMode(cfg) {
     // Map override -> ha üres, akkor a globális érvényesül
@@ -883,6 +941,44 @@
     this._recalcCamera(true);
   };
 
+  /* =====================================================================
+   * Window_TopLevel
+   *   – csak felirat(ok); szélessége a map‑ablakéval egyezik
+   * ===================================================================*/
+  function Window_TopLevel() {
+    this.initialize(...arguments);
+  }
+  Window_TopLevel.prototype = Object.create(Window_Base.prototype);
+  Window_TopLevel.prototype.constructor = Window_TopLevel;
+
+  Window_TopLevel.prototype.initialize = function (x, y, w, h, skinMode) {
+    Window_Base.prototype.initialize.call(this, x, y, w, h);
+
+    // skin kiválasztás
+    if (skinMode === "customwindow" && TL_CUSTOM_SKIN) {
+      this.windowskin = ImageManager.loadSystem(TL_CUSTOM_SKIN);
+    } else if (skinMode === "default") {
+      /* semmi plusz – default window */
+    } else if (skinMode === "same") {
+      // később Scene tölti be ugyan‑azt a sheetet mint a map‑ablak
+    }
+    this.refresh(""); // üres kezdés
+  };
+
+  /** Csak egyszerű szöveg‑kirajzolás */
+  Window_TopLevel.prototype.refresh = function (text) {
+    this.contents.clear();
+    if (!text) return;
+    const lh = this.lineHeight();
+    this.drawText(
+      text,
+      0,
+      (this.contentsHeight() - lh) / 2,
+      this.contentsWidth(),
+      "center"
+    );
+  };
+
   // ---------------------------------------------------------------------------
   // Window_InteractiveMap.zoomStep
   // ---------------------------------------------------------------------------
@@ -1191,10 +1287,30 @@
       WINDOW_DESIGN
     );
     this.addWindow(this._win);
-
     // overlay root for all sprites/text
     this._overlayRoot = new Sprite();
     this.addChild(this._overlayRoot);
+
+    // -------------------------------------------------------------------
+    //  Top‑level window (opcionális)
+    // -------------------------------------------------------------------
+    this._topWin = null;
+    if (TL_SHOW) {
+      const tlW = winW; // szélesség = térkép ablak
+      const tlH = TL_H;
+      const tlX = winX;
+      const tlY = winY - tlH - 8; // 8 px margó a map‑ablak fölött
+
+      this._topWin = new Window_TopLevel(tlX, tlY, tlW, tlH, TL_SKIN_MODE);
+
+      // "same" skin eset – örököljük a map ablaktól
+      if (TL_SKIN_MODE === "same") {
+        this._topWin.windowskin = this._win.windowskin;
+        this._topWin._refreshAllParts();
+      }
+      this.addWindow(this._topWin);
+      this._updateTopLevel();
+    }
 
     // --- custom frame, if any ---
     if (CUSTOM_FRAME_IMAGE) {
@@ -1399,6 +1515,20 @@
     }
   };
 
+  Scene_InteractiveMap.prototype._updateTopLevel = function () {
+    if (!this._topWin) return;
+    let txt = "";
+    if (TL_ELEMENTS.includes("showmap")) {
+      if (this._cfg && this._cfg.mapDisplayName) {
+        txt = this._cfg.mapDisplayName;
+      } else {
+        const info = $dataMapInfos[$gameMap.mapId()];
+        txt = info ? info.name : "";
+      }
+    }
+    this._topWin.refresh(txt);
+  };
+
   // ─────────────────────────────────────────────────────────────
   //  Scene_InteractiveMap – dinamikus map váltás ugyanabban az ablakban
   // ─────────────────────────────────────────────────────────────
@@ -1460,6 +1590,7 @@
       win._scaleMode = effScaleMode(cfg);
       win._recalcCamera(true);
       this._ensureScrollIndicators();
+      this._updateTopLevel();
 
       // 2) transzform újraszámolás
       this._xform =
