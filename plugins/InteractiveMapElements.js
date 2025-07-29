@@ -331,125 +331,6 @@
     }
   }
 
-  // --- Esemény-alapú POI-k beolvasása ---
-  const EVENT_TAG = /<IME\b([^>]*)>/i; // pl. <IME NONAME>
-  const NAME_TAG = /\[IME([^\]]*)\]/i; // pl. [IME NONAME]
-  const EV_FACE_DIR = "img/imecustomfaces/";
-
-  function parseImeArgs(argstr) {
-    const tokens = String(argstr || "")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    return {
-      noname: tokens.some((t) => /^noname$/i.test(t)),
-    };
-  }
-
-  function imeTagInfo(ev) {
-    const data = ev && ev.event && ev.event();
-    if (!data) return { present: false, noname: false };
-
-    let present = false;
-    let noname = false;
-
-    // Event name: "Valaki [IME NONAME]"
-    const nm = NAME_TAG.exec(data.name || "");
-    if (nm) {
-      present = true;
-      const a = parseImeArgs(nm[1]);
-      if (a.noname) noname = true;
-    }
-
-    // Note: "<IME NONAME>"
-    const nt = EVENT_TAG.exec(data.note || "");
-    if (nt) {
-      present = true;
-      const a = parseImeArgs(nt[1]);
-      if (a.noname) noname = true;
-    }
-
-    // Aktív page első ~6 komment sora
-    const page = ev.page && ev.page();
-    if (page && page.list) {
-      for (let i = 0; i < page.list.length && i < 6; i++) {
-        const cmd = page.list[i];
-        if (!cmd) break;
-        if (cmd.code === 108 || cmd.code === 408) {
-          const t = (cmd.parameters && cmd.parameters[0]) || "";
-          const m = EVENT_TAG.exec(t);
-          if (m) {
-            present = true;
-            const a = parseImeArgs(m[1]);
-            if (a.noname) noname = true;
-          }
-        } else if (cmd.code !== 408) {
-          break;
-        }
-      }
-    }
-
-    return { present, noname };
-  }
-
-  function makePoiFromEvent(ev, editorMapName, info) {
-    const raw = ev.event();
-    const meta = readImePortraitMeta(ev);
-
-    // Alapnév: event neve [IME ...] nélkül; portré név: IMENAME felülírhatja
-    const baseName = (raw.name || "").replace(NAME_TAG, "").trim();
-    const displayName = (meta.name || baseName).trim();
-
-    const portraitEnabled = !!(meta.name || meta.desc || meta.face);
-
-    const poi = {
-      id: "ev-" + ev.eventId(),
-      map: (editorMapName || "").trim(),
-      name: displayName,
-      img: "",
-      x: ev.x,
-      y: ev.y,
-      interactable: true,
-      visible: true,
-      w: 96,
-      h: 96,
-      _ev: ev,
-      _noName: !!(info && info.noname), // label rejtése NONAME esetén
-      portraitImg: "", // param-POI-knál használjuk csak
-      portraitDesc: meta.desc || "",
-      _evPortraitImg: meta.face || "", // fájlnév az EV_FACE_DIR alatt
-    };
-    return poi;
-  }
-
-  function _normalizeFaceFile(p) {
-    let v = String(p || "").trim();
-    v = v.replace(/^img\//i, ""); // "img/..." levágása, ha úgy adtad meg
-    const parts = v.split(/[\/\\]/); // csak a fájlnév kell
-    return parts[parts.length - 1] || "";
-  }
-
-  function readImePortraitMeta(ev) {
-    const res = { name: "", desc: "", face: "" };
-    const page = ev.page && ev.page();
-    if (!page || !page.list) return res;
-
-    for (let i = 0; i < page.list.length; i++) {
-      const cmd = page.list[i];
-      if (!cmd || (cmd.code !== 108 && cmd.code !== 408)) continue; // csak Comment sorok
-      const line = String((cmd.parameters && cmd.parameters[0]) || "");
-      let m;
-      if ((m = line.match(/^\s*IMENAME\s*:\s*(.*)$/i))) {
-        res.name = m[1].trim();
-      } else if ((m = line.match(/^\s*IMEDESC\s*:\s*(.*)$/i))) {
-        res.desc = m[1].trim();
-      } else if ((m = line.match(/^\s*FACEIMG\s*:\s*(.*)$/i))) {
-        res.face = _normalizeFaceFile(m[1]);
-      }
-    }
-    return res;
-  }
-
   /* ----------------------------------[ 4.  Osztályok ]-------------------- */
 
   // ~~~~~~~~~~~ 4.1  Badge‑es portrék (ablak) ~~~~~~~~~~~
@@ -467,19 +348,6 @@
     }
     refresh() {
       this.contents.clear();
-      if (this._poi._ev && this._poi._evPortraitImg) {
-        const bmp = ImageManager.loadBitmap(
-          EV_FACE_DIR,
-          this._poi._evPortraitImg,
-          0,
-          true
-        );
-        bmp.addLoadListener(() => {
-          drawCover(this.contents, bmp);
-          drawBadge(this.contents, this._poi.portraitBadge);
-        });
-        return;
-      }
       if (!this._poi.portraitImg) return;
       const bmp = ImageManager.loadBitmap(
         "img/interactivelements/",
@@ -493,6 +361,7 @@
       });
     }
   }
+
   function drawCover(c, bmp) {
     const CW = c.width,
       CH = c.height;
@@ -670,21 +539,6 @@
     }
   }
 
-  function dirRow(d) {
-    switch (d) {
-      case 2:
-        return 0;
-      case 4:
-        return 1;
-      case 6:
-        return 2;
-      case 8:
-        return 3;
-      default:
-        return 0;
-    }
-  }
-
   // ~~~~~~~~~~~ 4.4  Δ  POI Sprite (core) + villogás támogatás ~~~~~~~~~~~~~
   class PoiSprite extends Sprite {
     constructor(poi, scene, win) {
@@ -693,49 +547,25 @@
       this._scene = scene;
       this._win = win;
 
-      this._evState = {
-        sheet: null,
-        sheetName: "",
-        idx: -1,
-        big: false,
-        pw: 0,
-        ph: 0,
-        baseX: 0,
-        baseY: 0,
-        dir: -1,
-        pat: -1,
-      };
-
-      if (poi._ev) {
-        this._icon = new Sprite();
-        this._initIconFromEvent(poi._ev);
-      } else {
-        // 1) töltsd be külön a bmp-et
-        const bmp = ImageManager.loadBitmap(
-          "img/interactivelements/",
-          poi.img,
-          0,
-          true
-        );
-        // 2) ebből hozd létre a sprite-ot
-        this._icon = new Sprite(bmp);
-        // 3) a bmp-en regisztráld a load-listenert
-        bmp.addLoadListener(() => {
-          if (this._dead) return;
-          // a méretezésnél is a bmp.width / bmp.height‑et használd
-          this._baseScale = Math.min(poi.w / bmp.width, poi.h / bmp.height, 1);
-          this._icon._bottomPadPx = _calcBottomPad(bmp) || 0;
-          this._updatePos();
-        });
-      }
-
+      // Csak param-POI képből dolgozunk
+      const bmp = ImageManager.loadBitmap(
+        "img/interactivelements/",
+        poi.img,
+        0,
+        true
+      );
+      this._icon = new Sprite(bmp);
       this._icon.anchor.set(0.5, 1.0);
       this.addChild(this._icon);
 
-      this._label =
-        SHOW_LABEL && poi.name && !poi._noName
-          ? this._makeLabel(poi.name)
-          : null;
+      bmp.addLoadListener(() => {
+        if (this._dead) return;
+        this._baseScale = Math.min(poi.w / bmp.width, poi.h / bmp.height, 1);
+        this._icon._bottomPadPx = _calcBottomPad(bmp) || 0;
+        this._updatePos();
+      });
+
+      this._label = SHOW_LABEL && poi.name ? this._makeLabel(poi.name) : null;
 
       this.anchor.set(0.5, 1.0);
       this.visible = poi.visible;
@@ -755,97 +585,18 @@
 
     dispose() {
       this._dead = true;
-
-      // leiratkozások
       if (this._posUpd) {
         IRMap.off("camera-changed", this._posUpd);
         IRMap.off("update-tick", this._posUpd);
       }
       if (this._onClose) IRMap.off("scene-close", this._onClose);
-
-      // ikon leválasztása és bitmap nullázása
       if (this._icon) {
         try {
           this._icon.bitmap = null;
         } catch (e) {}
         if (this._icon.parent) this._icon.parent.removeChild(this._icon);
       }
-
-      // szülőről levétel
       if (this.parent) this.parent.removeChild(this);
-    }
-
-    _initIconFromEvent(ev) {
-      const name = ev.characterName && ev.characterName();
-      if (!name) return;
-      const sheet = ImageManager.loadCharacter(name);
-      sheet.addLoadListener(() => {
-        if (this._dead) return;
-        const big = ImageManager.isBigCharacter(name);
-        const pw = sheet.width / (big ? 3 : 12);
-        const ph = sheet.height / (big ? 4 : 8);
-        const idx = ev.characterIndex ? ev.characterIndex() : 0;
-
-        const baseX = (big ? 0 : (idx % 4) * 3) * pw;
-        const baseY = (big ? 0 : Math.floor(idx / 4) * 4) * ph;
-
-        this._evState = {
-          sheet,
-          sheetName: name,
-          idx,
-          big,
-          pw,
-          ph,
-          baseX,
-          baseY,
-          dir: -1,
-          pat: -1,
-        };
-
-        const dst = new Bitmap(pw, ph);
-        this._icon.bitmap = dst;
-
-        this._baseScale = Math.min(this.poi.w / pw, this.poi.h / ph, 1);
-
-        this._refreshEventFrame(ev, true);
-        this._icon._bottomPadPx = _calcBottomPad(this._icon.bitmap) || 0;
-
-        this._updatePos();
-      });
-    }
-
-    _refreshEventFrame(ev, force = false) {
-      const name = ev.characterName && ev.characterName();
-      const idx = ev.characterIndex ? ev.characterIndex() : 0;
-
-      // ha sheet/karakter váltott, töltsük újra
-      if (
-        name &&
-        (name !== this._evState.sheetName ||
-          idx !== this._evState.idx ||
-          !this._evState.sheet)
-      ) {
-        this._initIconFromEvent(ev);
-        return;
-      }
-      if (!this._evState.sheet) return;
-
-      const dir = ev.direction ? ev.direction() : 2; // 2,4,6,8
-      const pat = ev.pattern ? ev.pattern() : 1; // 0..2
-
-      if (!force && dir === this._evState.dir && pat === this._evState.pat)
-        return;
-
-      const { sheet, pw, ph, baseX, baseY } = this._evState;
-      const srcX = baseX + pat * pw;
-      const srcY = baseY + dirRow(dir) * ph;
-
-      const dst = this._icon.bitmap;
-      dst.clearRect(0, 0, dst.width, dst.height);
-      dst.blt(sheet, srcX, srcY, pw, ph, 0, 0);
-
-      this._evState.dir = dir;
-      this._evState.pat = pat;
     }
 
     _makeLabel(txt) {
@@ -870,30 +621,14 @@
 
     _updatePos() {
       if (this._dead) return;
-      if (this.poi._ev) {
-        const ev = this.poi._ev;
-        this.poi.x = ev.x;
-        this.poi.y = ev.y;
-
-        const hasPage = !!(ev.page && ev.page());
-        const hasGfx =
-          !!(ev.characterName && ev.characterName()) ||
-          (ev.tileId && ev.tileId() > 0);
-        if (!hasPage || !hasGfx) {
-          this.visible = false;
-          return;
-        }
-
-        this._refreshEventFrame(ev);
-      }
 
       const pos = IRMap.worldToImage(this.poi.x, this.poi.y) || {};
       const imgX = pos.imgX,
         imgY = pos.imgY;
       if (imgX == null) return;
 
-      const cam = this._win.cameraRect(),
-        s = this._win.coverScale();
+      const cam = this._win.cameraRect();
+      const s = this._win.coverScale();
       const rx = imgX - cam.x,
         ry = imgY - cam.y;
 
@@ -911,10 +646,12 @@
         const pad = this._icon._bottomPadPx || 0;
         const labelH = this._label.bitmap ? this._label.bitmap.height : 0;
         let yLocal = -pad;
+
         const innerTop = this._win.y + this._win.padding;
         const innerBottom = innerTop + this._win.contentsHeight();
         const labelTopScreenY = innerTop + this.y + yLocal * sIcon;
         if (labelTopScreenY + labelH > innerBottom) yLocal = -pad - labelH;
+
         this._label.scale.set(1 / sIcon);
         this._label.x = 0;
         this._label.y = yLocal;
@@ -932,6 +669,7 @@
       );
     }
   }
+
   /* ----------------------------------[ 5. Overlay – Sprite‑ek létrehozása ] */
   IRMap.registerOverlay((scene, win) => {
     const cfg0 = scene.mapConfig();
@@ -986,32 +724,9 @@
       const cfgNow = scene.mapConfig && scene.mapConfig();
       if (!cfgNow) return;
 
-      // 1) Paraméterezett POI‑k (Elements → pois)
       const list =
         POI_BY_MAP[(cfgNow.editorMapName || "").trim().toLowerCase()] || [];
       scene._imePoiSprites = list.map((p) => new PoiSprite(p, scene, win));
-
-      // 2) Élő event‑POI‑k csak akkor, ha az overlay ugyanarra a mapra mutat, mint a $gameMap
-      let bringLiveEvents = false;
-      try {
-        if (IRMap && IRMap.findMapIdByEditorName && $gameMap) {
-          const overlayId =
-            IRMap.findMapIdByEditorName(cfgNow.editorMapName || "") || 0;
-          bringLiveEvents = overlayId > 0 && $gameMap.mapId() === overlayId;
-        }
-      } catch (e) {}
-
-      if (bringLiveEvents && $gameMap) {
-        const liveEventsWithInfo = $gameMap
-          .events()
-          .map((ev) => ({ ev, info: imeTagInfo(ev) }))
-          .filter((x) => x.info.present);
-
-        const evPois = liveEventsWithInfo.map(({ ev, info }) =>
-          makePoiFromEvent(ev, cfgNow.editorMapName, info)
-        );
-        addSprites(evPois);
-      }
     };
 
     // Maszk egyszer / scene
@@ -1116,7 +831,6 @@
     if (scene._imeClickInstalled) return;
     scene._imeClickInstalled = true;
 
-    // Belső segéd: normalizáljuk az interactMode értéket
     function normalizeMode(v) {
       const s = String(v || "")
         .toLowerCase()
@@ -1152,20 +866,11 @@
       if (!spr) return;
 
       const poi = spr.poi;
-      if (!poi.interactable) return; // felső réteg
+      if (!poi.interactable) return;
 
       setActivePoi(scene, spr);
 
-      // Esemény‑POI: kattintáskor frissítjük a komment‑portré metaadatokat
-      if (poi._ev) {
-        const m = readImePortraitMeta(poi._ev);
-        poi.name = (m.name || poi.name).trim();
-        poi.portraitDesc = m.desc || poi.portraitDesc;
-        poi._evPortraitImg = m.face || poi._evPortraitImg;
-        poi.portraitEnabled = !!(m.name || m.desc || m.face);
-      }
-
-      // Régi ablakok/menü bezárása
+      // Régi ablakok bezárása
       if (scene._poiImgWin) {
         scene.removeChild(scene._poiImgWin);
         scene._poiImgWin = null;
@@ -1179,129 +884,90 @@
         scene._poiMenu = null;
       }
 
-      // ─────────────────────────────────────────────────────
-      // DÖNTÉSI FA
-      // ─────────────────────────────────────────────────────
+      const mode = normalizeMode(poi.interactMode);
 
-      if (poi._ev) {
-        // ESEMÉNY‑POI: portré, ha van adat
-        if (poi.portraitEnabled) {
-          const baseX = win.x + win.padding;
-          const baseY = win.y + win.padding;
+      // PORTRÉ (portrait / both)
+      if (mode === "portrait" || mode === "both") {
+        const baseX = win.x + win.padding;
+        const baseY = win.y + win.padding;
 
-          if (poi._evPortraitImg) {
-            scene._poiImgWin = new PoiPortraitImg(poi, baseX, baseY);
-            scene.addChild(scene._poiImgWin);
-          }
-          if (poi.name) {
-            scene._poiTxtWin = new PoiPortraitText(
-              poi,
-              baseX,
-              baseY + (scene._poiImgWin ? IMG_WIN_H : 0)
-            );
-            scene.addChild(scene._poiTxtWin);
-          }
+        if (poi.portraitImg) {
+          scene._poiImgWin = new PoiPortraitImg(poi, baseX, baseY);
+          scene.addChild(scene._poiImgWin);
         }
-      } else {
-        // PARAM‑POI: az interactMode dönt
-        const mode = normalizeMode(poi.interactMode);
-
-        // PORTRÉ (portrait / both)
-        if (mode === "portrait" || mode === "both") {
-          const baseX = win.x + win.padding;
-          const baseY = win.y + win.padding;
-
-          if (poi.portraitImg) {
-            scene._poiImgWin = new PoiPortraitImg(poi, baseX, baseY);
-            scene.addChild(scene._poiImgWin);
-          }
-          if (poi.name) {
-            scene._poiTxtWin = new PoiPortraitText(
-              poi,
-              baseX,
-              baseY + IMG_WIN_H
-            );
-            scene.addChild(scene._poiTxtWin);
-          }
-        }
-
-        // OPCIÓ MENÜ (options / both)
-        if (mode === "options" || mode === "both") {
-          const menu = new PoiOptions(poi, 0, 0);
-
-          // Pozicionálás a sprite mellé
-          const mw = menu.windowWidth();
-          const mh = menu.height;
-
-          const innerX = win.x + win.padding;
-          const innerY = win.y + win.padding;
-          const innerW = win.contentsWidth();
-          const innerH = win.contentsHeight();
-          const innerR = innerX + innerW;
-          const innerB = innerY + innerH;
-
-          // ── ITT A GUARD: ha a sprite ikonja közben levált a színpadról,
-          // ne hívjunk toGlobal()-t null parentre.
-          const hasParent = spr._icon && spr._icon.parent;
-          let L, R, T;
-          if (hasParent) {
-            const bb = iconScreenBounds(spr._icon);
-            L = bb.L;
-            R = bb.R;
-            T = bb.T;
-          } else {
-            // fallback az ablak belsejének sarkára
-            L = innerX;
-            R = innerX;
-            T = innerY;
-          }
-
-          const MARGIN = menu._margin || 0;
-          const GAPX = 0,
-            GAPY = 0;
-
-          let mx = Math.round(R - MARGIN + GAPX);
-          let my = Math.round(T - MARGIN + GAPY);
-          if (mx + mw > innerR) mx = Math.round(L + MARGIN - mw - GAPX);
-
-          if (mx < innerX) mx = innerX;
-          if (my < innerY) my = innerY;
-          if (my + mh > innerB) my = innerB - mh;
-
-          menu.x = mx;
-          menu.y = my;
-
-          // FONTOS: WindowLayer-re tegyük
-          scene.addWindow(menu);
-          scene._poiMenu = menu;
-        }
-
-        // TELEPORT (placeholder)
-        if (mode === "teleport") {
-          IME.emit("poi-teleport", { poi, location: poi.teleportLocation });
-          return;
-        }
-
-        // OPEN / LOAD RELATED MAP
-        if (mode === "openload") {
-          IME.emit("poi-open-related", { poi, mapId: poi.relatedMapId });
-          return;
-        }
-
-        if (mode === "runcommonevent") {
-          const ceId = +poi.callCommonEvent || 0;
-          IME.emit("poi-run-common-event", { poi, commonEventId: ceId });
-          return;
+        if (poi.name) {
+          scene._poiTxtWin = new PoiPortraitText(
+            poi,
+            baseX,
+            baseY + (scene._poiImgWin ? IMG_WIN_H : 0)
+          );
+          scene.addChild(scene._poiTxtWin);
         }
       }
 
-      // Általános kattintás esemény
+      // OPCIÓ MENÜ (options / both)
+      if (mode === "options" || mode === "both") {
+        const menu = new PoiOptions(poi, 0, 0);
+
+        const mw = menu.windowWidth(),
+          mh = menu.height;
+        const innerX = win.x + win.padding,
+          innerY = win.y + win.padding;
+        const innerW = win.contentsWidth(),
+          innerH = win.contentsHeight();
+        const innerR = innerX + innerW,
+          innerB = innerY + innerH;
+
+        const hasParent = spr._icon && spr._icon.parent;
+        let L, R, T;
+        if (hasParent) {
+          const bb = iconScreenBounds(spr._icon);
+          L = bb.L;
+          R = bb.R;
+          T = bb.T;
+        } else {
+          L = innerX;
+          R = innerX;
+          T = innerY;
+        }
+
+        const MARGIN = menu._margin || 0;
+        const GAPX = 0,
+          GAPY = 0;
+        let mx = Math.round(R - MARGIN + GAPX);
+        let my = Math.round(T - MARGIN + GAPY);
+        if (mx + mw > innerR) mx = Math.round(L + MARGIN - mw - GAPX);
+
+        if (mx < innerX) mx = innerX;
+        if (my < innerY) my = innerY;
+        if (my + mh > innerB) my = innerB - mh;
+
+        menu.x = mx;
+        menu.y = my;
+        scene.addWindow(menu);
+        scene._poiMenu = menu;
+      }
+
+      if (mode === "teleport") {
+        IME.emit("poi-teleport", { poi, location: poi.teleportLocation });
+        return;
+      }
+      if (mode === "openload") {
+        IME.emit("poi-open-related", { poi, mapId: poi.relatedMapId });
+        return;
+      }
+      if (mode === "runcommonevent") {
+        const ceId = +poi.callCommonEvent || 0;
+        IME.emit("poi-run-common-event", { poi, commonEventId: ceId });
+        return;
+      }
+
       IME.emit("poi-click", { poi });
     });
 
     IRMap.on("scene-close", ({ scene: sc }) => {
       if (sc !== scene) return;
-      // itt nincs extra dolgunk; a blink‑updater külön kapcsol le
+      // nincs extra teendő
     });
   }
 
