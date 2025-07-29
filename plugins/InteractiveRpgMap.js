@@ -236,6 +236,39 @@
  * @desc If ON, your custom frame will render above the map content (overlap).
  *
  * ============================================================================
+ *  --- GUI / Scroll Indicators ----------------------------------------------
+ * ============================================================================
+ *
+ * @param ---Gui---
+ * @desc ▼ Global GUI tweaks
+ * @default ------------------------------
+ *
+ * @param showScrollIndicators
+ * @parent ---Gui---
+ * @text Show Scroll Indicators
+ * @type boolean
+ * @on Show
+ * @off Hide
+ * @default true
+ * @desc Show or hide scroll indicators
+ * 
+ * @param scrollIndicatorSize
+ * @parent ---Gui---
+ * @text Scroll Indicator Size
+ * @type number
+ * @min 8
+ * @max 128
+ * @default 24
+ * @desc Scroll indicators size
+ *
+ * @param scrollIndicatorColor
+ * @parent ---Gui---
+ * @text Scroll Indicator Color
+ * @type text
+ * @default #FFFFFF
+ * @desc Scroll indicators color
+ * 
+ * ============================================================================
  *  Map-specific overrides
  * ============================================================================
  *
@@ -688,21 +721,33 @@
     ty = clamp(ty, 0, $dataMap.height - 1);
     return { tx, ty };
   }
-
-  // ---------------------------------------------------------------------------
-  // Input mapping
-  // ---------------------------------------------------------------------------
-  // const openCode = str2code(OPEN_KEY_STR);
-  // if (openCode != null) Input.keyMapper[openCode] = MAP_KEY;
-
   // ────────────────────────────────────────────────────────────────────────────
-  // 1) először töltsd be a háromszög‐képeket a plugin tetején, pl. img/system/tri_up.
-  //    Ezek lehetnek saját .png fájlok, vagy az MV-ben lévő ikonokból kivágva.
+  // Scroll‑indikátor beállítások
   // ────────────────────────────────────────────────────────────────────────────
-  const TRI_UP = ImageManager.loadSystem("tri_up");
-  const TRI_DOWN = ImageManager.loadSystem("tri_down");
-  const TRI_LEFT = ImageManager.loadSystem("tri_left");
-  const TRI_RIGHT = ImageManager.loadSystem("tri_right");
+  const SHOW_SCROLL_IND = P("showScrollIndicators") !== "false";
+  const DEFAULT_IND_SIZE = Number(P("scrollIndicatorSize") || 24);
+  const DEFAULT_IND_COLOR = P("scrollIndicatorColor") || "#FFFFFF";
+
+  /** Visszaad egy 24×24‑es fehér, felfelé mutató nyíl‑Bitmapet. */
+  function makeArrowBitmap(size = DEFAULT_IND_SIZE, color = DEFAULT_IND_COLOR) {
+    const S = size;
+    const bmp = new Bitmap(S, S);
+    const ctx = bmp._context;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    const half = S / 2;
+    const baseOffset = S * 0.1;
+    ctx.moveTo(half, 0);
+    ctx.lineTo(S - baseOffset, S);
+    ctx.lineTo(baseOffset, S);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    bmp._setDirty();
+    return bmp;
+  }
+  const ARROW_BMP = makeArrowBitmap();
 
   // ────────────────────────────────────────────────────────────────────────────
   // 1) In-menu handler hookup (Scene_Menu) – színezés és ikon escape-ekkel
@@ -1345,11 +1390,12 @@
       const camY = this._win._camTY; // cél Y
       const srcW = this._win._srcW;
       const srcH = this._win._srcH;
-
-      this._triUp.visible = camY > 0;
-      this._triDown.visible = camY + srcH < bmp.height;
-      this._triLeft.visible = camX > 0;
-      this._triRight.visible = camX + srcW < bmp.width;
+      if (SHOW_SCROLL_IND) {
+        this._triUp.visible = camY > 0;
+        this._triDown.visible = camY + srcH < bmp.height;
+        this._triLeft.visible = camX > 0;
+        this._triRight.visible = camX + srcW < bmp.width;
+      }
     }
   };
 
@@ -1522,37 +1568,54 @@
 
   Scene_InteractiveMap.prototype._ensureScrollIndicators = function () {
     const win = this._win;
-    const IND_PAD = 4;
+    const PAD = 4;
 
-    // ha még nincsenek, hozzuk létre
-    if (!this._triUp) {
-      this._triUp = new Sprite(TRI_UP);
-      this._triDown = new Sprite(TRI_DOWN);
-      this._triLeft = new Sprite(TRI_LEFT);
-      this._triRight = new Sprite(TRI_RIGHT);
+    if (!SHOW_SCROLL_IND) {
+      if (this._triUp) {
+        [this._triUp, this._triDown, this._triLeft, this._triRight].forEach(
+          (sp) => {
+            if (sp && sp.parent) sp.parent.removeChild(sp);
+          }
+        );
+        this._triUp = this._triDown = this._triLeft = this._triRight = null;
+      }
+      return;
     }
 
-    // a rajzterület (letterbox) belsejére igazítjuk
+    if (!this._triUp) {
+      // új Sprite‑ek
+      this._triUp = new Sprite(ARROW_BMP);
+      this._triDown = new Sprite(ARROW_BMP);
+      this._triLeft = new Sprite(ARROW_BMP);
+      this._triRight = new Sprite(ARROW_BMP);
+
+      [this._triUp, this._triDown, this._triLeft, this._triRight].forEach(
+        (sp) => {
+          sp.anchor.set(0.5, 0.5);
+          this._overlayRoot.addChild(sp);
+        }
+      );
+
+      this._triUp.rotation = 0;
+      this._triRight.rotation = Math.PI / 2;
+      this._triDown.rotation = Math.PI;
+      this._triLeft.rotation = -Math.PI / 2;
+    }
+
+    // pozíció
     const innerX = win.x + win.padding + (win._drawDX || 0);
     const innerY = win.y + win.padding + (win._drawDY || 0);
     const innerW = win._drawW || win.contentsWidth();
     const innerH = win._drawH || win.contentsHeight();
 
-    this._triUp.x = innerX + (innerW - this._triUp.width) / 2;
-    this._triUp.y = innerY + IND_PAD;
-    this._triDown.x = innerX + (innerW - this._triDown.width) / 2;
-    this._triDown.y = innerY + innerH - this._triDown.height - IND_PAD;
-    this._triLeft.x = innerX + IND_PAD;
-    this._triLeft.y = innerY + (innerH - this._triLeft.height) / 2;
-    this._triRight.x = innerX + innerW - this._triRight.width - IND_PAD;
-    this._triRight.y = innerY + (innerH - this._triRight.height) / 2;
-
-    // ha nincsenek benne a display listben, adjuk vissza
-    [this._triUp, this._triDown, this._triLeft, this._triRight].forEach(
-      (sp) => {
-        if (sp.parent !== this._overlayRoot) this._overlayRoot.addChild(sp);
-      }
-    );
+    this._triUp.x = innerX + innerW / 2;
+    this._triUp.y = innerY + PAD;
+    this._triDown.x = innerX + innerW / 2;
+    this._triDown.y = innerY + innerH - PAD;
+    this._triLeft.x = innerX + PAD;
+    this._triLeft.y = innerY + innerH / 2;
+    this._triRight.x = innerX + innerW - PAD;
+    this._triRight.y = innerY + innerH / 2;
   };
 
   // Kényelmi wrapper: név alapján
