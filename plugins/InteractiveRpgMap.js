@@ -275,7 +275,28 @@
  * @type number
  * @min 24
  * @default 60
+ * 
+ * @param topLevelFontSize
+ * @parent ---Top level Window---
+ * @text Font size(px)
+ * @type number
+ * @min 6
+ * @default 18
  *
+ * @param topLevelJustify
+ * @parent ---Top level Window---
+ * @text Layout
+ * @type select
+ * @option Center
+ * @value center
+ * @option Space Between
+ * @value spacebetween
+ * @option Row Start
+ * @value start
+ * @option Row End
+ * @value end
+ * @default center
+ * 
  * @param topLevelElements
  * @parent ---Top level Window---
  * @text Top level elements
@@ -511,11 +532,13 @@
   const TL_SKIN_MODE = (P("topLevelWindowSkin") || "same").toLowerCase();
   const TL_CUSTOM_SKIN = P("topLevelCustomSkin") || "";
   const TL_H = Number(P("topLevelHeight") || 60);
+  const TL_FONT_SIZE = Number(P("topLevelFontSize") || 18);
   const TL_ELEMENTS = JSON.parse(P("topLevelElements") || "[]").map((e) =>
     String(e || "")
       .trim()
       .toLowerCase()
   );
+  const TL_JUSTIFY = (P("topLevelJustify") || "center").toLowerCase();
 
   function effScaleMode(cfg) {
     // Map override -> ha üres, akkor a globális érvényesül
@@ -954,29 +977,56 @@
   Window_TopLevel.prototype.initialize = function (x, y, w, h, skinMode) {
     Window_Base.prototype.initialize.call(this, x, y, w, h);
 
-    // skin kiválasztás
     if (skinMode === "customwindow" && TL_CUSTOM_SKIN) {
       this.windowskin = ImageManager.loadSystem(TL_CUSTOM_SKIN);
     } else if (skinMode === "default") {
-      /* semmi plusz – default window */
     } else if (skinMode === "same") {
       // később Scene tölti be ugyan‑azt a sheetet mint a map‑ablak
     }
     this.refresh(""); // üres kezdés
   };
 
+  Window_TopLevel.prototype.standardFontSize = function () {
+    return TL_FONT_SIZE;
+  };
+
   /** Csak egyszerű szöveg‑kirajzolás */
-  Window_TopLevel.prototype.refresh = function (text) {
+  Window_TopLevel.prototype.refresh = function (items) {
     this.contents.clear();
-    if (!text) return;
-    const lh = this.lineHeight();
-    this.drawText(
-      text,
-      0,
-      (this.contentsHeight() - lh) / 2,
-      this.contentsWidth(),
-      "center"
-    );
+    if (!Array.isArray(items) || !items.length) return;
+
+    const gapBase = 16; // gapp
+    this.contents.fontSize = TL_FONT_SIZE;
+    const lineH = this.lineHeight();
+    const widths = items.map((t) => this.textWidth(t));
+    const totalW = widths.reduce((a, b) => a + b, 0);
+    const cw = this.contentsWidth();
+    let gaps = gapBase;
+    let x0;
+
+    switch (TL_JUSTIFY) {
+      case "start":
+        x0 = 0;
+        break;
+      case "end":
+        x0 = cw - (totalW + gapBase * (items.length - 1));
+        break;
+      case "spacebetween":
+        x0 = 0;
+        gaps = items.length > 1 ? (cw - totalW) / (items.length - 1) : 0;
+        break;
+      case "center":
+      default:
+        x0 = (cw - (totalW + gapBase * (items.length - 1))) / 2;
+        break;
+    }
+
+    let x = Math.max(0, Math.round(x0));
+    const y = Math.round((this.contentsHeight() - lineH) / 2);
+    for (let i = 0; i < items.length; i++) {
+      this.drawText(items[i], x, y, widths[i], "left");
+      x += widths[i] + gaps;
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -1264,9 +1314,16 @@
     this._cfg = null;
     this._xform = null;
     this._frameSprite = null;
-    this._overlayRoot = null; // addons rakhatnak gyerekeket
+    this._overlayRoot = null;
+    this._breadcrumb = [$gameMap.mapId()];
     IRMap._currentScene = this;
     IRMap.emit("scene-open", { scene: this });
+    this._selectedName = "";
+    this._onPoiClick = ({ poi }) => {
+      this._selectedName = (poi && poi.name) || "";
+      this._updateTopLevel();
+    };
+    IRMap.on("poi-click", this._onPoiClick);
   };
 
   Scene_InteractiveMap.prototype.create = function () {
@@ -1458,6 +1515,7 @@
   };
 
   Scene_InteractiveMap.prototype.terminate = function () {
+    IRMap.off("poi-click", this._onPoiClick);
     IRMap.emit("scene-close", { scene: this });
     Scene_MenuBase.prototype.terminate.call(this);
     if (IRMap._currentScene === this) IRMap._currentScene = null;
@@ -1517,16 +1575,41 @@
 
   Scene_InteractiveMap.prototype._updateTopLevel = function () {
     if (!this._topWin) return;
-    let txt = "";
+    const pieces = [];
+
+    // 1) showmap mindig az első
     if (TL_ELEMENTS.includes("showmap")) {
       if (this._cfg && this._cfg.mapDisplayName) {
-        txt = this._cfg.mapDisplayName;
+        pieces.push(this._cfg.mapDisplayName);
       } else {
         const info = $dataMapInfos[$gameMap.mapId()];
-        txt = info ? info.name : "";
+        pieces.push(info ? info.name : "");
       }
     }
-    this._topWin.refresh(txt);
+
+    // 2) full breadcrumb csak ez után
+    const wantCrumb = TL_ELEMENTS.some(
+      (e) => e === "showbreadcumb" || e === "show breadcumb"
+    );
+    if (wantCrumb && this._breadcrumb.length > 1) {
+      const names = this._breadcrumb.map((id) => {
+        const cfg = findCfgForMapId(id);
+        if (cfg && cfg.mapDisplayName) return cfg.mapDisplayName;
+        const info = $dataMapInfos[id];
+        return info ? info.name : "MAP" + id;
+      });
+      pieces.push(names.join(" / "));
+    }
+
+    // 3) végül a showselected, ha van
+    if (
+      TL_ELEMENTS.some((e) => e === "showselected" || e === "show selected") &&
+      this._selectedName
+    ) {
+      pieces.push(this._selectedName);
+    }
+
+    this._topWin.refresh(pieces);
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -1578,9 +1661,17 @@
       return;
     }
 
+    const idx = this._breadcrumb.indexOf(mapId);
+    if (idx >= 0) {
+      this._breadcrumb.splice(idx + 1);
+    } else {
+      this._breadcrumb.push(mapId);
+    }
+
     const win = this._win;
     const oldCfg = this._cfg;
     this._cfg = cfg;
+    this._selectedName = "";
 
     // Új bitmap betöltése
     const bmp = ImageManager.loadBitmap("img/maps/", cfg.fullMapImage, 0, true);
@@ -1592,11 +1683,8 @@
       this._ensureScrollIndicators();
       this._updateTopLevel();
 
-      // 2) transzform újraszámolás
       this._xform =
         typeof calcXform === "function" ? calcXform(bmp, cfg) : null;
-
-      // 3) újra‑középre igazítás (opcionális)
       if (win._canPan) {
         const pos =
           typeof worldToImage === "function"
