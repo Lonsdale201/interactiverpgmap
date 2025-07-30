@@ -302,6 +302,8 @@
  * @text Top level elements
  * @type text[]
  * @default ["showmap"]
+ * @desc Supported commands: showmap showbreadcumb showselected read more about this function  on github
+ * 
  *
  * ============================================================================
  *  --- GUI / Scroll Indicators ----------------------------------------------
@@ -2223,6 +2225,13 @@
         GLOBAL_DISABLED = false;
       }
       // (nem kell itt fallbacket törölni, de ha szeretnéd, tehetsz ide is logikát)
+    }
+    if (command === "OpenMap") {
+      // ha nincs args[0], akkor a current map
+      const mapId = args[0] ? Number(args[0]) : $gameMap.mapId();
+      if (mapId > 0) {
+        IRMap.switchToMapById(mapId);
+      }
     }
   };
 
