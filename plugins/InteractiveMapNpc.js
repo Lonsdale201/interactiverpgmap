@@ -61,12 +61,11 @@
  *
  * @help
  * Használat:
- *  - Event neve:  Valaki [IME NONAME]
- *  - Event Note/Comment: <IME NONAME>
- *  - Portré meta az aktív page Comment soraiban:
- *      IMENAME: Valaki
+ *  - Event Note/Comment: <IME> használhatod így is <IME NONAME> -> ilyenkor a térképen nem lesz ott az event neve
+ *  - Portré meta az aktív page Comment soraiban: (commentet használj hozzá a definíciókhoz)
+ *      IMENAME: Npc neve
  *      IMEDESC: Többsoros\nleírás támogatott.
- *      FACEIMG: Valaki.png
+ *      FACEIMG: Valaki.png (img/imecustomfaces) -> hozd létre hozzá a imecustomfaces mappát közvetlenül az img belül
  * Csak a JELENLEGI pályán lévő eventeket rajzolja, és a térképen a
  * játékossal azonos pálya megnyitásakor.
  */
@@ -102,7 +101,21 @@
       .trim()
       .split(/\s+/)
       .filter(Boolean);
-    return { noname: tokens.some((t) => /^noname$/i.test(t)) };
+    const res = {
+      noname: false,
+      width: null,
+      height: null,
+    };
+    for (const t of tokens) {
+      if (/^noname$/i.test(t)) {
+        res.noname = true;
+      } else if (/^W\s*:\s*(\d+)$/i.test(t)) {
+        res.width = +t.match(/^W\s*:\s*(\d+)$/i)[1];
+      } else if (/^H\s*:\s*(\d+)$/i.test(t)) {
+        res.height = +t.match(/^H\s*:\s*(\d+)$/i)[1];
+      }
+    }
+    return res;
   }
 
   function readPortraitMeta(ev) {
@@ -135,39 +148,57 @@
 
   function imeTagInfo(ev) {
     const data = ev && ev.event && ev.event();
-    if (!data) return { present: false, noname: false };
+    if (!data)
+      return { present: false, noname: false, width: null, height: null };
 
-    let present = false,
-      noname = false;
+    let present = false;
+    let noname = false;
+    let width = null;
+    let height = null;
 
+    // [IME …] tag in event name
     const nm = NAME_TAG.exec(data.name || "");
     if (nm) {
       present = true;
-      if (parseImeArgs(nm[1]).noname) noname = true;
+      const args = parseImeArgs(nm[1]);
+      if (args.noname) noname = true;
+      if (args.width != null) width = args.width;
+      if (args.height != null) height = args.height;
     }
 
+    // <IME …> tag in event note
     const nt = NOTE_TAG.exec(data.note || "");
     if (nt) {
       present = true;
-      if (parseImeArgs(nt[1]).noname) noname = true;
+      const args = parseImeArgs(nt[1]);
+      if (args.noname) noname = true;
+      if (args.width != null) width = args.width;
+      if (args.height != null) height = args.height;
     }
 
+    // also scan first few comment lines on the page
     const page = ev.page && ev.page();
     if (page && page.list) {
       for (let i = 0; i < page.list.length && i < 6; i++) {
         const cmd = page.list[i];
         if (!cmd) break;
         if (cmd.code === 108 || cmd.code === 408) {
-          const t = (cmd.parameters && cmd.parameters[0]) || "";
-          const m = NOTE_TAG.exec(t);
+          const line = (cmd.parameters && cmd.parameters[0]) || "";
+          const m = NOTE_TAG.exec(line);
           if (m) {
             present = true;
-            if (parseImeArgs(m[1]).noname) noname = true;
+            const args = parseImeArgs(m[1]);
+            if (args.noname) noname = true;
+            if (args.width != null) width = args.width;
+            if (args.height != null) height = args.height;
           }
-        } else if (cmd.code !== 408) break;
+        } else if (cmd.code !== 408) {
+          break;
+        }
       }
     }
-    return { present, noname };
+
+    return { present, noname, width, height };
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -323,12 +354,14 @@
   }
 
   class NpcSprite extends Sprite {
-    constructor(ev, scene, win, showLabel) {
+    constructor(ev, scene, win, showLabel, maxW = ICON_W, maxH = ICON_H) {
       super();
       this._ev = ev;
       this._scene = scene;
       this._win = win;
       this._showLabel = showLabel;
+      this._maxIconW = maxW;
+      this._maxIconH = maxH;
 
       this._icon = new Sprite();
       this._icon.anchor.set(0.5, 1.0);
@@ -348,10 +381,10 @@
         pat: -1,
       };
       this._baseScale = 1;
-      this.__npcRefreshFrame(true);
       this._bottomPad = 0;
 
       this._initFromEvent(ev);
+
       if (this._showLabel) {
         const bm = new Bitmap(240, 24);
         bm.fontSize = 18;
@@ -361,7 +394,7 @@
         this._label = new Sprite(bm);
         this._label.anchor.set(0.5, 0);
         this._icon.addChild(this._label);
-      } else this._label = null;
+      }
     }
 
     _initFromEvent(ev) {
@@ -396,8 +429,7 @@
         };
 
         this._icon.bitmap = new Bitmap(pw, ph);
-        this._baseScale = Math.min(ICON_W / pw, ICON_H / ph, 1);
-
+        this._baseScale = Math.min(this._maxIconW / pw, this._maxIconH / ph, 1);
         this.__npcRefreshFrame(true); // ← új, ütközésmentes név
         this._bottomPad = 0;
       });
@@ -505,13 +537,25 @@
     scene._npcSprites = [];
     scene._npcActive = null;
 
+    function clearPortraitWindows() {
+      if (scene._npcImgWin) {
+        scene.removeChild(scene._npcImgWin);
+        scene._npcImgWin = null;
+      }
+      if (scene._npcTxtWin) {
+        scene.removeChild(scene._npcTxtWin);
+        scene._npcTxtWin = null;
+      }
+      scene._npcActive = null;
+    }
+
     function rebuild() {
       // törlés
       (scene._npcSprites || []).forEach(
         (sp) => sp.parent && sp.parent.removeChild(sp)
       );
       scene._npcSprites = [];
-
+      clearPortraitWindows();
       if (!sameMap || !$gameMap) return;
 
       // csak azok az eventek, ahol [IME] vagy <IME> jelen van
@@ -522,10 +566,19 @@
 
       for (const { ev, info } of candidates) {
         const meta = readPortraitMeta(ev);
+        const customW = info.width > 0 ? info.width : ICON_W;
+        const customH = info.height > 0 ? info.height : ICON_H;
         const displayName = (
           meta.name || (ev.event().name || "").replace(NAME_TAG, "").trim()
         ).trim();
-        const sp = new NpcSprite(ev, scene, win, SHOW_LABEL && !info.noname);
+        const sp = new NpcSprite(
+          ev,
+          scene,
+          win,
+          SHOW_LABEL && !info.noname,
+          customW,
+          customH
+        );
         sp._poi = {
           name: displayName,
           desc: meta.desc || "",
@@ -548,6 +601,7 @@
         overlayIdNow > 0 && $gameMap && $gameMap.mapId() === overlayIdNow;
       if (sameNow !== sameMap) {
         sameMap = sameNow;
+        clearPortraitWindows();
         rebuild();
       }
 
@@ -616,7 +670,10 @@
         scene.addChild(scene._npcTxtWin);
       }
 
-      scene._npcActive = spr; // (ha később akarsz villogást, ide illeszthető)
+      scene._npcActive = spr; // (ha később akarok  villogást, ide illeszthető)
+      if (window.IRMap && IRMap.emit) {
+        IRMap.emit("poi-click", { poi: spr._poi });
+      }
     });
   });
 })();

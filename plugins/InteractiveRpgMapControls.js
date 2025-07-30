@@ -4,7 +4,7 @@
  * @author  Soczó Kristóff
  * @version 1.2
  *
- * @param openMapKey    @default q
+ * @param openMapKey    @default m
  * @param zoomInKey     @default numpad+
  * @param zoomOutKey    @default numpad-
  * @param panLeftKey    @default left

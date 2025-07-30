@@ -963,6 +963,9 @@
       }
 
       IME.emit("poi-click", { poi });
+      if (window.IRMap && IRMap.emit) {
+        IRMap.emit("poi-click", { poi });
+      }
     });
 
     IRMap.on("scene-close", ({ scene: sc }) => {
