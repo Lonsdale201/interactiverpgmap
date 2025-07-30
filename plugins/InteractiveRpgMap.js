@@ -2,7 +2,7 @@
  * @plugindesc InteractiveRpgMap – fullscreen & minimap core w/ player marker, smooth pan, scalable tile mapping, window design modes, addon API
  * @author Soczó Kristóf
  * @target MV
- * @version 0.75
+ * @version 0.80
  *
  * ============================================================================
  *  --- Map Settings -----------------------------------------------------------
@@ -345,7 +345,7 @@
  * @default ------------------------------
  *
  * @param maps
- * @text Maps
+ * @text SETUP YOUR MAPS 
  * @type struct<MapConfig>[]
  * @desc Define per-map overrides and images.
  *
@@ -360,10 +360,27 @@
  * @type text
  * @desc Specify which map the settings belong to. This name must match the name of the map named in the Editor!
  *
+ * @param fullMapImage
+ * @text Fullscreen Map Image
+ * @type file
+ * @dir img/maps
+ * @desc Add the map image. If it does not exist, create the maps folder within the IMG folder!
+ *
  * @param MapName
  * @text Custom map name
  * @type text
  * @desc Enter the name of the map (this will be displayed in plan text without window skin) in the top center of your map
+ *
+ * @param enablePlayerTracking
+ * @text Enable Player Tracking (this map)
+ * @type boolean
+ * @on On
+ * @off Off
+ * @default true
+ *
+ * @param inmapSetup
+ * @text --- Extras ---
+ * @default
  *
  * @param MapNameAsImage
  * @text Custom map name as img
@@ -378,12 +395,6 @@
  * @off Off
  * @default true
  * @desc Automatically reduces the size of the image. Perfect results are not guaranteed.
- *
- * @param fullMapImage
- * @text Fullscreen Map Image
- * @type file
- * @dir img/maps
- * @desc Add the map image. If it does not exist, create the maps folder within the IMG folder!
  *
  * @param scaleMode
  * @text Scale Mode (override)
@@ -431,13 +442,6 @@
  * @min 0
  * @default 0
  * @desc Playable-area height (px). 0 = bitmap height − imgOffsetY (map reaches the bottom edge).
- *
- * @param enablePlayerTracking
- * @text Enable Player Tracking (this map)
- * @type boolean
- * @on On
- * @off Off
- * @default true
  *
  * @param canSeeSeparator
  * @text --- Can See Map If ---
@@ -1315,7 +1319,7 @@
     this._xform = null;
     this._frameSprite = null;
     this._overlayRoot = null;
-    this._breadcrumb = [$gameMap.mapId()];
+    this._breadcrumb = IRMap.getAncestorChain($gameMap.mapId()).reverse();
     IRMap._currentScene = this;
     IRMap.emit("scene-open", { scene: this });
     this._selectedName = "";
@@ -1661,12 +1665,7 @@
       return;
     }
 
-    const idx = this._breadcrumb.indexOf(mapId);
-    if (idx >= 0) {
-      this._breadcrumb.splice(idx + 1);
-    } else {
-      this._breadcrumb.push(mapId);
-    }
+    this._breadcrumb = IRMap.getAncestorChain(mapId).reverse();
 
     const win = this._win;
     const oldCfg = this._cfg;
