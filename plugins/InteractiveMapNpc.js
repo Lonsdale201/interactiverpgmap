@@ -2,7 +2,7 @@
  * @plugindesc InteractiveMapNpc – NPC/event ikonok, IME tagek és portré ablak az InteractiveRpgMap-hez
  * @target MV
  * @author  Soczó Kristóf
- * @version 0.1
+ * @version 0.2
  *
  * @param showNpcLabel
  * @text NPC címkék
@@ -12,16 +12,22 @@
  * @default true
  *
  * @param npcIconWidth
- * @text Ikon max. szélesség (px)
+ * @text Event Width(px)
  * @type number
  * @min 16
  * @default 96
  *
  * @param npcIconHeight
- * @text Ikon max. magasság (px)
+ * @text Event Height (px)
  * @type number
  * @min 16
  * @default 96
+ *
+ * @param npcLabelFontSize
+ * @text Event label font size
+ * @type number
+ * @min 8
+ * @default 18
  *
  * @param portraitImgWinWidth
  * @text Portré kép ablak szélesség
@@ -79,6 +85,7 @@
   const SHOW_LABEL = P("showNpcLabel") !== "false";
   const ICON_W = +P("npcIconWidth") || 96;
   const ICON_H = +P("npcIconHeight") || 96;
+  const LABEL_FONT = +P("npcLabelFontSize") || 18;
 
   const IMG_W = +P("portraitImgWinWidth") || 240;
   const IMG_H = +P("portraitImgWinHeight") || 240;
@@ -364,9 +371,9 @@
       this._maxIconH = maxH;
 
       this._icon = new Sprite();
-      this._icon.anchor.set(0.5, 1.0);
+      this._icon.anchor.set(0.5, 0.5);
       this.addChild(this._icon);
-      this.anchor.set(0.5, 1.0);
+      this.anchor.set(0.5, 0.5);
 
       this._state = {
         sheet: null,
@@ -387,7 +394,7 @@
 
       if (this._showLabel) {
         const bm = new Bitmap(240, 24);
-        bm.fontSize = 18;
+        bm.fontSize = LABEL_FONT;
         bm.textColor = "#fff";
         bm.outlineColor = "rgba(0,0,0,0.75)";
         bm.outlineWidth = 4;
@@ -406,6 +413,7 @@
       sheet.addLoadListener(() => {
         // ← arrow fn: helyes this
         if (this._dead) return;
+        IRMap.unregisterClickable(this);
 
         const big = ImageManager.isBigCharacter(name);
         const pw = sheet.width / (big ? 3 : 12);
@@ -429,7 +437,7 @@
         };
 
         this._icon.bitmap = new Bitmap(pw, ph);
-        this._baseScale = Math.min(this._maxIconW / pw, this._maxIconH / ph, 1);
+        this._baseScale = Math.min(this._maxIconW / pw, this._maxIconH / ph);
         this.__npcRefreshFrame(true); // ← új, ütközésmentes név
         this._bottomPad = 0;
       });
@@ -453,44 +461,46 @@
     }
 
     updateLayout(nameText) {
-      // pozíciók
+      // ─── 1. Koordináták ─────────────────────────────────────────────
       const pos = IRMap.worldToImage(this._ev.x, this._ev.y) || {};
       const cam = this._win.cameraRect();
       const scale = this._win.coverScale();
 
-      // nullish helyett undefined-ellenőrzés
-      const imgXval = pos.imgX !== undefined ? pos.imgX : 0;
-      const imgYval = pos.imgY !== undefined ? pos.imgY : 0;
-      const rx = imgXval - cam.x;
-      const ry = imgYval - cam.y;
+      const imgX = pos.imgX != null ? pos.imgX : 0;
+      const imgY = pos.imgY != null ? pos.imgY : 0;
+      const rx = imgX - cam.x;
+      const ry = imgY - cam.y;
 
       const inside = rx >= 0 && ry >= 0 && rx <= cam.w && ry <= cam.h;
       this.visible = inside;
       if (!inside) return;
 
+      // ─── 2. Sprite pozíció + skála ──────────────────────────────────
       this.x = Math.round(rx * scale);
       this.y = Math.round(ry * scale);
       this._icon.scale.set(this._baseScale * scale);
 
       this.__npcRefreshFrame(false);
 
+      // ─── 3. Címke pozícionálása ─────────────────────────────────────
       if (this._label) {
         const bm = this._label.bitmap;
         bm.clear();
         bm.drawText(nameText || "", 0, 0, bm.width, bm.height, "center");
+
+        // sprite‑magasság (anchor 0.5)  → label mindig alá kerüljön
+        const iconH = this._icon.bitmap ? this._icon.bitmap.height : 0;
+        const pad = this._icon._bottomPadPx || 0; // transzparens padding
+        const gap = 2; // pici rés
+
+        const localY = iconH / 2 - pad + gap; // sprite‑középtől lefelé
+
         const sIcon = this._icon.scale.y;
-        const labelH = bm.height;
-        let yLocal = -this._bottomPad;
-        const innerTop = this._win.y + this._win.padding;
-        const innerBottom = innerTop + this._win.contentsHeight();
-        const labelTopScreenY = innerTop + this.y + yLocal * sIcon;
-        if (labelTopScreenY + labelH > innerBottom) {
-          yLocal = -this._bottomPad - labelH;
-        }
-        this._label.scale.set(1 / sIcon);
+        this._label.scale.set(1 / sIcon); // méretkompenzáció
         this._label.x = 0;
-        this._label.y = yLocal;
+        this._label.y = localY;
       }
+
       this.__npcRefreshFrame(false);
     }
 
@@ -516,12 +526,7 @@
     if (!cfg) return;
 
     // Csak akkor hozzuk az "élő" eventeket, ha a megnyitott szerkesztő‑map = $gameMap
-    let sameMap = false;
-    try {
-      const overlayId =
-        IRMap.findMapIdByEditorName(cfg.editorMapName || "") || 0;
-      sameMap = overlayId > 0 && $gameMap && $gameMap.mapId() === overlayId;
-    } catch (e) {}
+    let sameMap = $gameMap && $gameMap.mapId() === Number(cfg.mapId);
 
     // Maszk (ha még nincs)
     if (!win._poiMask) {
@@ -556,7 +561,6 @@
       );
       scene._npcSprites = [];
       clearPortraitWindows();
-      if (!sameMap || !$gameMap) return;
 
       // csak azok az eventek, ahol [IME] vagy <IME> jelen van
       const candidates = $gameMap
@@ -571,6 +575,12 @@
         const displayName = (
           meta.name || (ev.event().name || "").replace(NAME_TAG, "").trim()
         ).trim();
+
+        console.log(
+          `[DEBUG] NPC: "${displayName}" pos: x=${ev.x}, y=${ev.y}` +
+            (info.noname ? " (no-name tag)" : "")
+        );
+
         const sp = new NpcSprite(
           ev,
           scene,
@@ -584,21 +594,32 @@
           desc: meta.desc || "",
           _evFace: meta.face || "",
         };
+
+        // addChild override for diagnostic logging
+        sp._icon.addChild = ((orig) =>
+          function (child) {
+            if (!this.bitmap && !sp._state.sheet) {
+              console.log(
+                `[DEBUG] ${displayName}: ikon bitmap még nincs betöltve`
+              );
+            }
+            return orig.call(this, child);
+          })(sp._icon.addChild);
+
         win._markerLayer.addChild(sp);
         scene._npcSprites.push(sp);
+        IRMap.registerClickable(sp, () => onNpcClick(scene, win, sp), {
+          blink: true,
+        });
       }
     }
 
     rebuild();
 
     const onTick = () => {
-      // ha közben térkép váltás történt ugyanebben a Scene‑ben, építsük újra
+      // ha térkép váltás történt ugyanebben a Scene‑ben, építsük újra
       const cfgNow = scene.mapConfig && scene.mapConfig();
-      const overlayIdNow =
-        IRMap.findMapIdByEditorName((cfgNow && cfgNow.editorMapName) || "") ||
-        0;
-      const sameNow =
-        overlayIdNow > 0 && $gameMap && $gameMap.mapId() === overlayIdNow;
+      const sameNow = $gameMap && $gameMap.mapId() === Number(cfgNow.mapId);
       if (sameNow !== sameMap) {
         sameMap = sameNow;
         clearPortraitWindows();
@@ -615,6 +636,7 @@
       if (sc !== scene) return;
       IRMap.off("update-tick", onTick);
       IRMap.off("scene-close", onClose);
+      scene._npcSprites.forEach((sp) => IRMap.unregisterClickable(sp));
       // takarítás
       (scene._npcSprites || []).forEach(
         (sp) => sp.parent && sp.parent.removeChild(sp)
@@ -635,14 +657,19 @@
     IRMap.on("scene-close", onClose);
 
     // kattintás – csak NPC sprite‑okra
-    IRMap.on("update-tick", () => {
-      if (!TouchInput.isTriggered()) return;
-      const sx = TouchInput.x,
-        sy = TouchInput.y;
-      const spr = (scene._npcSprites || []).find((sp) => sp.hitTest(sx, sy));
-      if (!spr) return;
 
-      // régi UI zárás
+    function onNpcClick(scene, win, spr) {
+      // Előző POI-ablakok bezárása…
+      if (scene._poiImgWin) {
+        scene.removeChild(scene._poiImgWin);
+        scene._poiImgWin = null;
+      }
+      if (scene._poiTxtWin) {
+        scene.removeChild(scene._poiTxtWin);
+        scene._poiTxtWin = null;
+      }
+
+      // Korábbi NPC-ablakok bezárása…
       if (scene._npcImgWin) {
         scene.removeChild(scene._npcImgWin);
         scene._npcImgWin = null;
@@ -652,28 +679,31 @@
         scene._npcTxtWin = null;
       }
 
-      const baseX = win.x + win.padding,
-        baseY = win.y + win.padding;
+      // csak akkor nyissunk bármit, ha van név ÉS leírás
+      const hasMeta = !!spr._poi.name && !!spr._poi.desc;
+      if (!hasMeta) {
+        // esetleg ide tehetsz valami logot vagy csak simán return
+        return;
+      }
 
-      // portré kép – ha van FACEIMG
+      const baseX = win.x + win.padding;
+      const baseY = win.y + win.padding;
+
+      // Portré kép (ha van FACEIMG)
       if (spr._poi._evFace) {
         scene._npcImgWin = new NpcPortraitImg(spr._poi, baseX, baseY);
         scene.addChild(scene._npcImgWin);
       }
-      // név + leírás – ha bármi megjeleníthető
-      if (spr._poi.name || spr._poi.desc) {
-        scene._npcTxtWin = new NpcPortraitText(
-          spr._poi,
-          baseX,
-          baseY + (scene._npcImgWin ? IMG_H : 0)
-        );
-        scene.addChild(scene._npcTxtWin);
-      }
+      // Név + leírás
+      scene._npcTxtWin = new NpcPortraitText(
+        spr._poi,
+        baseX,
+        baseY + (scene._npcImgWin ? IMG_H : 0)
+      );
+      scene.addChild(scene._npcTxtWin);
 
-      scene._npcActive = spr; // (ha később akarok  villogást, ide illeszthető)
-      if (window.IRMap && IRMap.emit) {
-        IRMap.emit("poi-click", { poi: spr._poi });
-      }
-    });
+      scene._npcActive = spr;
+      IRMap.emit("poi-click", { poi: spr._poi });
+    }
   });
 })();

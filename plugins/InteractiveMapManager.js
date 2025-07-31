@@ -117,9 +117,8 @@
   }
 
   // --- Related map megnyitása ugyanabban a Map ablakban + history push -----
-  // --- Related map megnyitása ugyanabban a Map ablakban + history push -----
   safeOnIME("poi-open-related", ({ poi, mapId, mapName }) => {
-    // kis segéd a felirat + azonnali bezáráshoz
+    // ─── Helper: üzenet + azonnali Scene-zárás ─────────────────────
     function sayAndPop(text) {
       if (!text) return;
       try {
@@ -131,13 +130,12 @@
       } catch (_) {
         $gameMessage.add(String(text));
       }
-      if (SoundManager && SoundManager.playBuzzer) SoundManager.playBuzzer();
-      SceneManager.pop(); // zárjuk a térképet, hogy a message azonnal látszódjon
+      SoundManager && SoundManager.playBuzzer && SoundManager.playBuzzer();
+      SceneManager.pop();
     }
 
+    // ─── Cél-map ID feloldása (id vagy név) ─────────────────────────
     let id = Number(mapId || 0);
-
-    // Back‑compat: ha név jön
     if (!id && mapName && IRMap && IRMap.findMapIdByEditorName) {
       id = IRMap.findMapIdByEditorName(String(mapName).trim());
     }
@@ -151,29 +149,32 @@
       return;
     }
 
-    // Aktuális (megjelenített) editor‑map ID kinyerése history-hoz
+    // ─── Megjelenített térkép ID-je (history + leszármazott-check) ──
     let currentId = 0;
     try {
       const sc = IRMap.currentScene && IRMap.currentScene();
       const cfg = sc && sc.mapConfig && sc.mapConfig();
-      if (cfg && IRMap.findMapIdByEditorName) {
-        currentId = IRMap.findMapIdByEditorName(cfg.editorMapName || "");
+      if (cfg) {
+        if (cfg.mapId) {
+          currentId = Number(cfg.mapId); // új, ID-alapú
+        } else if (cfg.editorMapName && IRMap.findMapIdByEditorName) {
+          currentId = IRMap.findMapIdByEditorName(cfg.editorMapName) || 0; // visszamenőleges
+        }
       }
-    } catch (e) {
+    } catch (_) {
       /* ignore */
     }
 
-    // Opcionális gyerek‑ellenőrzés (ha definiált a parent → children reláció)
-    const kids =
-      IRMap && IRMap.getChildMapIds
-        ? IRMap.getChildMapIds(currentId) || []
-        : [];
-    if (kids.length && !kids.includes(id)) {
-      sayAndPop("This related map is not a child of the current map.");
+    // ─── Leszármazott-ellenőrzés (bármely mélység) ──────────────────
+    if (
+      currentId && // van aktuális térkép
+      !IRMap.getAncestorChain(id).includes(currentId) // currentId NEM ős
+    ) {
+      sayAndPop("This related map is not a descendant of the current map.");
       return;
     }
 
-    // Hozzáférési feltételek (core szabályok) – HA NEM ENGEDÉLYEZETT: üzenet + AZONNALI POP
+    // ─── Hozzáférési szabályok (core) ───────────────────────────────
     if (IRMap && IRMap.canOpenMap && !IRMap.canOpenMap(id)) {
       const failMsg =
         (IRMap.getOpenMapFailureMessage &&
@@ -183,11 +184,11 @@
       return;
     }
 
-    // History‑ba csak akkor toljuk, ha valós váltás lesz
+    // ─── History push, csak ha tényleg váltunk ──────────────────────
     if (currentId && currentId !== id) NavHistory.push(currentId);
 
-    _installBackWatcherOnce(); // Backspace figyelő bekapcsolása (egyszer)
-    IRMap.switchToMapById(id); // váltás
+    _installBackWatcherOnce(); // Backspace figyelő egyszer kapcsol
+    IRMap.switchToMapById(id); // térkép-váltás
   });
 
   // --- Teleport – placeholder ---

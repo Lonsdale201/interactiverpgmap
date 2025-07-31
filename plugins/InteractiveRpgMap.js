@@ -250,6 +250,7 @@
  * @on true
  * @off false
  * @default true
+ * @desc This is an extra window that appears above the map window, and you can dynamically display data in it.
  *
  * @param topLevelWindowSkin
  * @parent ---Top level Window---
@@ -275,6 +276,7 @@
  * @type number
  * @min 24
  * @default 60
+ * @desc Adjust the height of the window
  * 
  * @param topLevelFontSize
  * @parent ---Top level Window---
@@ -296,6 +298,7 @@
  * @option Row End
  * @value end
  * @default center
+ * @desc How to position the display of your content in a row.
  * 
  * @param topLevelElements
  * @parent ---Top level Window---
@@ -357,10 +360,13 @@
  */
 
 /*~struct~MapConfig:
- * @param editorMapName
- * @text Editor Map Name
- * @type text
- * @desc Specify which map the settings belong to. This name must match the name of the map named in the Editor!
+ *
+ * @param mapId
+ * @text Target Map ID
+ * @type number
+ * @min 1
+ * @default 1
+ * @desc Please enter the MAP ID (identifier) to indicate which editor map the loaded map will belong to. (00 is not necessary; for example, 004 = 4)
  *
  * @param fullMapImage
  * @text Fullscreen Map Image
@@ -369,9 +375,32 @@
  * @desc Add the map image. If it does not exist, create the maps folder within the IMG folder!
  *
  * @param MapName
- * @text Custom map name
+ * @text Custom Map Name
  * @type text
- * @desc Enter the name of the map (this will be displayed in plan text without window skin) in the top center of your map
+ * @desc Enter the name of the map (this will be displayed in plan text without window skin) in the top center of your map.
+ *
+ * @param Mapdesc
+ * @text Map Description
+ * @type text
+ * @desc Enter the short map desciprtion if you want to use it in the top level window (Showdesc)
+ *
+ * @param namePosition
+ * @text Choose the position
+ * @type select
+ * @option Top left
+ * @value top-left
+ * @option Top center
+ * @value top-center
+ * @option Top right
+ * @value top-right
+ * @option Bottom left
+ * @value bottom-left
+ * @option Bottom center
+ * @value bottom-center
+ * @option Bottom right
+ * @value bottom-right
+ * @default top-center
+ * @desc Where to draw the map name (Custom map name or Custom map name as img) inside the map window.
  *
  * @param enablePlayerTracking
  * @text Enable Player Tracking (this map)
@@ -385,7 +414,7 @@
  * @default
  *
  * @param MapNameAsImage
- * @text Custom map name as img
+ * @text Custom Map Name As Img
  * @type file
  * @dir img/maplabels
  * @desc Same thing like Current Map name, but instead of plain text, you can display it as an image.
@@ -570,6 +599,7 @@
   const MAP_CFGS = MAP_CFGS_RAW.map((e) => {
     const cfg = JSON.parse(e);
     cfg.mapDisplayName = cfg.MapName || "";
+    cfg.mapDescription = cfg.Mapdesc || "";
     return cfg;
   });
 
@@ -611,6 +641,11 @@
     return info ? info.name : "";
   }
   function findCfgForMapId(mapId) {
+    // elsődlegesen próbáljuk meg közvetlenül az ID-t
+    const byId = MAP_CFGS.find((c) => Number(c.mapId) === mapId);
+    if (byId) return byId;
+
+    // ha nincs ID-alapú config, akkor visszatérünk a régi név-alapú kereséssel
     const info = $dataMapInfos[mapId];
     if (!info) return null;
     return MAP_CFGS.find((c) => c.editorMapName === info.name) || null;
@@ -1355,18 +1390,17 @@
     this.addChild(this._overlayRoot);
 
     // -------------------------------------------------------------------
-    //  Top‑level window (opcionális)
+    //  Top-level window (opcionális)
     // -------------------------------------------------------------------
     this._topWin = null;
     if (TL_SHOW) {
-      const tlW = winW; // szélesség = térkép ablak
+      const tlW = winW;
       const tlH = TL_H;
       const tlX = winX;
-      const tlY = winY - tlH - 8; // 8 px margó a map‑ablak fölött
+      const tlY = winY - tlH - 8;
 
       this._topWin = new Window_TopLevel(tlX, tlY, tlW, tlH, TL_SKIN_MODE);
 
-      // "same" skin eset – örököljük a map ablaktól
       if (TL_SKIN_MODE === "same") {
         this._topWin.windowskin = this._win.windowskin;
         this._topWin._refreshAllParts();
@@ -1419,7 +1453,6 @@
         cfg: null,
         xform: null,
       });
-      // nyilak létrehozása a biztonság kedvéért (itt nem lesznek láthatók)
       this._ensureScrollIndicators();
       return;
     }
@@ -1434,9 +1467,7 @@
     bmp.addLoadListener(() => {
       this._win.setBitmap(bmp);
 
-      // scale mód (map override → globális)
       this._win._scaleMode = effScaleMode(this._cfg);
-      // a setBitmap hívott már egy recalcot; a mód miatt futtassuk újra
       this._win._recalcCamera(true);
 
       this._xform = calcXform(bmp, this._cfg);
@@ -1454,26 +1485,66 @@
       });
       this._refreshMarker();
 
-      // --- map name or map-name-as-image at top center ---
-      const useImg = !!this._cfg.MapNameAsImage;
-      const autoScale = P("mapNameImgScale") !== "false";
+      // --- map name or map-name-as-image at configurable position ---
+      const cfg = this._cfg;
+      const namePos = (cfg.namePosition || "top-center").toLowerCase();
+      const useImg = !!cfg.MapNameAsImage;
+      const autoScale = cfg.mapNameImgScale !== false;
+
+      // define all six positions
+      const positions = {
+        "top-left": {
+          anchorX: 0,
+          anchorY: 0,
+          x: winX + this._win.padding,
+          y: winY + this._win.padding,
+        },
+        "top-center": {
+          anchorX: 0.5,
+          anchorY: 0,
+          x: winX + winW / 2,
+          y: winY + this._win.padding,
+        },
+        "top-right": {
+          anchorX: 1,
+          anchorY: 0,
+          x: winX + winW - this._win.padding,
+          y: winY + this._win.padding,
+        },
+        "bottom-left": {
+          anchorX: 0,
+          anchorY: 1,
+          x: winX + this._win.padding,
+          y: winY + winH - this._win.padding,
+        },
+        "bottom-center": {
+          anchorX: 0.5,
+          anchorY: 1,
+          x: winX + winW / 2,
+          y: winY + winH - this._win.padding,
+        },
+        "bottom-right": {
+          anchorX: 1,
+          anchorY: 1,
+          x: winX + winW - this._win.padding,
+          y: winY + winH - this._win.padding,
+        },
+      };
+
+      const pos = positions[namePos] || positions["top-center"];
 
       if (useImg) {
         // Image mode
         const labelBmp = ImageManager.loadBitmap(
           "img/maplabels/",
-          this._cfg.MapNameAsImage,
+          cfg.MapNameAsImage,
           0,
           true
         );
         const labelSpr = new Sprite(labelBmp);
-        labelSpr.anchor.set(0.5, 0);
-
-        // position at top-center inside window padding
-        labelSpr.x = winX + winW / 2;
-        labelSpr.y = winY + this._win.padding;
-
-        // auto-scale down (max 25% of window width – nálad így volt)
+        labelSpr.anchor.set(pos.anchorX, pos.anchorY);
+        labelSpr.x = pos.x;
+        labelSpr.y = pos.y;
         if (autoScale) {
           labelBmp.addLoadListener(() => {
             const maxW = winW * 0.25;
@@ -1484,15 +1555,22 @@
           });
         }
         this._overlayRoot.addChild(labelSpr);
-      } else if (this._cfg.mapDisplayName) {
-        // Text mode (existing)
-        const text = this._cfg.mapDisplayName;
+      } else if (cfg.mapDisplayName) {
+        // Text mode
+        const text = cfg.mapDisplayName;
         const lh = this._win.lineHeight();
         const textBmp = new Bitmap(winW, lh);
-        textBmp.drawText(text, 0, 0, winW, lh, "center");
+        // choose alignment based on horizontal position
+        const align = namePos.includes("right")
+          ? "right"
+          : namePos.includes("center")
+          ? "center"
+          : "left";
+        textBmp.drawText(text, 0, 0, winW, lh, align);
         const textSpr = new Sprite(textBmp);
+        // for left and center/right, x always padded; vertical y adjusted by anchor
         textSpr.x = winX + this._win.padding;
-        textSpr.y = winY + this._win.padding;
+        textSpr.y = pos.y - pos.anchorY * lh;
         this._overlayRoot.addChild(textSpr);
       }
 
@@ -1505,7 +1583,7 @@
         }
       });
 
-      // nyilak pozicionálása a rajzterülethez (letterbox figyelembe véve)
+      // position scroll indicators after drawing name
       this._ensureScrollIndicators();
 
       IRMap.emit("scene-ready", {
@@ -1516,7 +1594,7 @@
       });
     });
 
-    // ha még a bitmap töltődik, tegyük fel a nyilakat, hogy ne legyen undefined
+    // if still loading, ensure indicators exist
     this._ensureScrollIndicators();
   };
 
@@ -1583,37 +1661,57 @@
     if (!this._topWin) return;
     const pieces = [];
 
-    // 1) showmap mindig az első
-    if (TL_ELEMENTS.includes("showmap")) {
-      if (this._cfg && this._cfg.mapDisplayName) {
-        pieces.push(this._cfg.mapDisplayName);
-      } else {
-        const info = $dataMapInfos[$gameMap.mapId()];
-        pieces.push(info ? info.name : "");
+    // végig a paraméterben megadott sorrenden
+    TL_ELEMENTS.forEach((raw) => {
+      const e = raw.trim().toLowerCase();
+
+      // 1) showmap
+      if (e === "showmap") {
+        if (this._cfg && this._cfg.mapDisplayName) {
+          pieces.push(this._cfg.mapDisplayName);
+        } else {
+          const info = $dataMapInfos[$gameMap.mapId()];
+          pieces.push(info ? info.name : "");
+        }
+        return;
       }
-    }
 
-    // 2) full breadcrumb csak ez után
-    const wantCrumb = TL_ELEMENTS.some(
-      (e) => e === "showbreadcumb" || e === "show breadcumb"
-    );
-    if (wantCrumb && this._breadcrumb.length > 1) {
-      const names = this._breadcrumb.map((id) => {
-        const cfg = findCfgForMapId(id);
-        if (cfg && cfg.mapDisplayName) return cfg.mapDisplayName;
-        const info = $dataMapInfos[id];
-        return info ? info.name : "MAP" + id;
-      });
-      pieces.push(names.join(" / "));
-    }
+      // 2) showbreadcumb / show breadcumb [+ opcionális topleveloff flag]
+      if (e.startsWith("showbreadcumb")) {
+        if (this._breadcrumb.length > 1) {
+          const tokens = e.split(/\s+/);
+          const flag = tokens.slice(1).join(" ");
+          const hideRoot = flag === "topleveloff" || flag === "top level off";
+          const chain = hideRoot ? this._breadcrumb.slice(1) : this._breadcrumb;
+          const names = chain.map((id) => {
+            const cfg = findCfgForMapId(id);
+            if (cfg && cfg.mapDisplayName) return cfg.mapDisplayName;
+            const info = $dataMapInfos[id];
+            return info ? info.name : "MAP" + id;
+          });
+          pieces.push(names.join(" / "));
+        }
+        return;
+      }
 
-    // 3) végül a showselected, ha van
-    if (
-      TL_ELEMENTS.some((e) => e === "showselected" || e === "show selected") &&
-      this._selectedName
-    ) {
-      pieces.push(this._selectedName);
-    }
+      // 3) showdesc / show desc / show description
+      if (e === "showdesc" || e === "show desc" || e === "show description") {
+        if (this._cfg && this._cfg.mapDescription) {
+          pieces.push(this._cfg.mapDescription);
+        }
+        return;
+      }
+
+      // 4) showselected / show selected
+      if (e === "showselected" || e === "show selected") {
+        if (this._selectedName) {
+          pieces.push(this._selectedName);
+        }
+        return;
+      }
+
+      // ide lehet később további showXYZ parancsokat beilleszteni...
+    });
 
     this._topWin.refresh(pieces);
   };
@@ -1780,8 +1878,8 @@
         IRMap.emit("map-switched", {
           scene: this,
           win,
-          from: oldCfg ? oldCfg.editorMapName : null,
-          to: cfg.editorMapName,
+          from: oldCfg ? oldCfg.mapId || oldCfg.editorMapName : null,
+          to: cfg.mapId || cfg.editorMapName,
         });
     });
   };
@@ -2017,12 +2115,6 @@
       win = win || IRMap.currentWindow();
       if (!win) return null;
 
-      // const cam = win.cameraRect();
-      // const s = win.coverScale();
-
-      // const sx = win.x + win.padding + (imgX - cam.x) * s;
-      // const sy = win.y + win.padding + (imgY - cam.y) * s;
-      // return { x: sx, y: sy };
       const dxOff = win._drawDX || 0;
       const dyOff = win._drawDY || 0;
       const sx = win.x + win.padding + dxOff + (imgX - cam.x) * s;
@@ -2052,6 +2144,88 @@
       return { imgX, imgY };
     },
   };
+
+  const ClickSys = {
+    list: [], // {sprite, onClick, blink} elemek
+    active: null, // jelenleg villogtatott sprite
+    add(sprite, onClick, opt = {}) {
+      this.list.push({ sprite, onClick, blink: !!opt.blink });
+    },
+    remove(sprite) {
+      this.list = this.list.filter((e) => e.sprite !== sprite);
+      if (this.active && this.active.sprite === sprite) this._stopBlink();
+    },
+    clear() {
+      this._stopBlink();
+      this.list = [];
+    },
+
+    _processTick() {
+      /* 1) CLICK ---------------------------------------------------- */
+      if (TouchInput.isTriggered()) {
+        const sx = TouchInput.x,
+          sy = TouchInput.y;
+        const hit = this.list.find(
+          (e) =>
+            e.sprite.visible &&
+            typeof e.sprite.hitTest === "function" &&
+            e.sprite.hitTest(sx, sy)
+        );
+        if (hit) {
+          // előző villogás leállítása
+          this._stopBlink();
+          // callback
+          try {
+            hit.onClick(hit.sprite);
+          } catch (e) {
+            console.error(e);
+          }
+          // új villogás (ha kérte)
+          if (hit.blink) this._startBlink(hit);
+        }
+      }
+
+      /* 2) BLINK ---------------------------------------------------- */
+      if (this.active) {
+        // gyorsabb fázisnövelés
+        const phaseInc = 0.1; // korábban 0.05 volt
+        const phase = (this.active._phase =
+          (this.active._phase || 0) + phaseInc);
+
+        const a0 = this.active.baseAlpha;
+
+        // csak 40–100% között villogjon
+        const min = 0.4;
+        const max = 1.0;
+        const amp = max - min; // 0.6
+
+        // sinból [0…1] tartomány
+        const t = (Math.sin(phase) + 1) * 0.5;
+
+        this.active.sprite.alpha = a0 * (min + amp * t);
+      }
+    },
+
+    _startBlink(entry) {
+      this.active = entry;
+      entry.baseAlpha = entry.sprite.alpha;
+      entry._phase = 0;
+    },
+    _stopBlink() {
+      if (this.active) {
+        this.active.sprite.alpha = this.active.baseAlpha;
+        this.active = null;
+      }
+    },
+  };
+
+  /* automatikusan ráakasztjuk a core saját „update‑tick” bus‑ára */
+  IRMap.on("update-tick", () => ClickSys._processTick());
+  IRMap.on("scene-close", () => ClickSys.clear());
+
+  /* nyilvános API */
+  IRMap.registerClickable = (spr, cb, opt) => ClickSys.add(spr, cb, opt);
+  IRMap.unregisterClickable = (spr) => ClickSys.remove(spr);
 
   // ─────────────────────────────────────────────────────────────
   //  IRMap – extra API: név→id, parent/child, feltételes elérhetőség
@@ -2102,7 +2276,7 @@
   IRMap.canOpenMap = function (mapId) {
     const cfg =
       typeof findCfgForMapId === "function" ? findCfgForMapId(mapId) : null;
-    if (!cfg) return true; // ha nincs konfig, ne zárjuk el by default
+    if (!cfg) return true;
     return typeof canOpenInteractiveMap === "function"
       ? canOpenInteractiveMap(cfg)
       : true;
@@ -2116,11 +2290,9 @@
       : "";
   };
 
-  // Global helper az IRMap‑on keresztül (manager és más addonok innen hívják)
   IRMap.switchToMapById = function (mapId, opts) {
     const sc = IRMap.currentScene && IRMap.currentScene();
     if (!sc || !(sc instanceof Scene_InteractiveMap)) {
-      // ha nincs nyitva a map Scene, nyissuk meg, majd a ready után váltsunk
       SceneManager.push(Scene_InteractiveMap);
       const once = ({ scene }) => {
         if (scene instanceof Scene_InteractiveMap) {
