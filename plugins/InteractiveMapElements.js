@@ -590,9 +590,11 @@
       IRMap.on("scene-close", this._onClose);
 
       /* ÚJ: központi kattintás-regisztráció */
-      IRMap.registerClickable(this, () => handlePoiClick(scene, win, this), {
-        blink: true,
-      });
+      if (poi.interactable) {
+        IRMap.registerClickable(this, () => handlePoiClick(scene, win, this), {
+          blink: true,
+        });
+      }
     }
 
     dispose() {

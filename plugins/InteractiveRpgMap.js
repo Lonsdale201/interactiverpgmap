@@ -2,7 +2,7 @@
  * @plugindesc InteractiveRpgMap – fullscreen & minimap core w/ player marker, smooth pan, scalable tile mapping, window design modes, addon API
  * @author Soczó Kristóf
  * @target MV
- * @version 0.80
+ * @version 0.90
  *
  * ============================================================================
  *  --- Map Settings -----------------------------------------------------------
@@ -1365,6 +1365,10 @@
       this._updateTopLevel();
     };
     IRMap.on("poi-click", this._onPoiClick);
+    IRMap.on("empty-click", () => {
+      this._selectedName = "";
+      if (this._topWin) this._updateTopLevel();
+    });
   };
 
   Scene_InteractiveMap.prototype.create = function () {
@@ -1592,6 +1596,35 @@
         cfg: this._cfg,
         xform: this._xform,
       });
+    });
+    IRMap.on("empty-click", () => {
+      // POI elemek ablaka
+      if (this._poiImgWin) {
+        this.removeChild(this._poiImgWin);
+        this._poiImgWin = null;
+      }
+      if (this._poiTxtWin) {
+        this.removeChild(this._poiTxtWin);
+        this._poiTxtWin = null;
+      }
+      // NPC portré ablaka
+      if (this._npcImgWin) {
+        this.removeChild(this._npcImgWin);
+        this._npcImgWin = null;
+      }
+      if (this._npcTxtWin) {
+        this.removeChild(this._npcTxtWin);
+        this._npcTxtWin = null;
+      }
+      // opciós menü (ha van)
+      if (this._poiMenu) {
+        this.removeChild(this._poiMenu);
+        this._poiMenu = null;
+      }
+      if (this._npcMenu) {
+        this.removeChild(this._npcMenu);
+        this._npcMenu = null;
+      }
     });
 
     // if still loading, ensure indicators exist
@@ -2182,6 +2215,10 @@
           }
           // új villogás (ha kérte)
           if (hit.blink) this._startBlink(hit);
+        } else {
+          // üres helyre kattintottak
+          IRMap.emit("empty-click");
+          this._stopBlink();
         }
       }
 

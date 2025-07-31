@@ -110,12 +110,16 @@
       .filter(Boolean);
     const res = {
       noname: false,
+      noint: false, // <— új
       width: null,
       height: null,
     };
     for (const t of tokens) {
       if (/^noname$/i.test(t)) {
         res.noname = true;
+      } else if (/^noint$/i.test(t)) {
+        // <— új ág
+        res.noint = true;
       } else if (/^W\s*:\s*(\d+)$/i.test(t)) {
         res.width = +t.match(/^W\s*:\s*(\d+)$/i)[1];
       } else if (/^H\s*:\s*(\d+)$/i.test(t)) {
@@ -155,11 +159,19 @@
 
   function imeTagInfo(ev) {
     const data = ev && ev.event && ev.event();
-    if (!data)
-      return { present: false, noname: false, width: null, height: null };
+    if (!data) {
+      return {
+        present: false,
+        noname: false,
+        noint: false,
+        width: null,
+        height: null,
+      };
+    }
 
     let present = false;
     let noname = false;
+    let noint = false;
     let width = null;
     let height = null;
 
@@ -169,6 +181,7 @@
       present = true;
       const args = parseImeArgs(nm[1]);
       if (args.noname) noname = true;
+      if (args.noint) noint = true;
       if (args.width != null) width = args.width;
       if (args.height != null) height = args.height;
     }
@@ -179,6 +192,7 @@
       present = true;
       const args = parseImeArgs(nt[1]);
       if (args.noname) noname = true;
+      if (args.noint) noint = true;
       if (args.width != null) width = args.width;
       if (args.height != null) height = args.height;
     }
@@ -196,6 +210,7 @@
             present = true;
             const args = parseImeArgs(m[1]);
             if (args.noname) noname = true;
+            if (args.noint) noint = true;
             if (args.width != null) width = args.width;
             if (args.height != null) height = args.height;
           }
@@ -205,7 +220,7 @@
       }
     }
 
-    return { present, noname, width, height };
+    return { present, noname, noint, width, height };
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -608,9 +623,11 @@
 
         win._markerLayer.addChild(sp);
         scene._npcSprites.push(sp);
-        IRMap.registerClickable(sp, () => onNpcClick(scene, win, sp), {
-          blink: true,
-        });
+        if (!info.noint) {
+          IRMap.registerClickable(sp, () => onNpcClick(scene, win, sp), {
+            blink: true,
+          });
+        }
       }
     }
 
