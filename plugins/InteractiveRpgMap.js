@@ -2444,6 +2444,44 @@
     }
   };
 
+  /* -----------------------------------------------------------------------
+   * 7.  SAVE / LOAD  –  InteractiveRpgMap save system
+   * -------------------------------------------------------------------- */
+
+  function _irmSerializeState() {
+    return {
+      globalDisabled: GLOBAL_DISABLED,
+      disabledMaps: Array.from(DISABLED_SET),
+      textNoMap: TEXT_NO_MAP,
+      fallbackImg: FALLBACK_IMG,
+    };
+  }
+
+  function _irmApplyState(s) {
+    if (!s) return;
+    GLOBAL_DISABLED = !!s.globalDisabled;
+    DISABLED_SET.clear();
+    (s.disabledMaps || []).forEach((id) => DISABLED_SET.add(id));
+
+    if (typeof s.textNoMap === "string") TEXT_NO_MAP = s.textNoMap;
+    if (typeof s.fallbackImg === "string") FALLBACK_IMG = s.fallbackImg;
+  }
+
+  /* ---------- SAVE ---------- */
+  const _IRM_DM_makeSaveContents = DataManager.makeSaveContents;
+  DataManager.makeSaveContents = function () {
+    const contents = _IRM_DM_makeSaveContents.call(this);
+    contents.irMapCoreState = _irmSerializeState();
+    return contents;
+  };
+
+  /* ---------- LOAD ---------- */
+  const _IRM_DM_extractSaveContents = DataManager.extractSaveContents;
+  DataManager.extractSaveContents = function (contents) {
+    _IRM_DM_extractSaveContents.call(this, contents);
+    _irmApplyState(contents.irMapCoreState);
+  };
+
   // expose
   window.IRMap = IRMap;
   window.IRMap.str2code = str2code;

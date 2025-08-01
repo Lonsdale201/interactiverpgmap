@@ -92,6 +92,8 @@
   const TXT_W = +P("portraitTextWinWidth") || 260;
   const TXT_H = +P("portraitTextWinHeight") || 260;
   const PORTRAIT_SKIN = P("portraitWindowSkin") || "";
+  const HIDDEN_NPCS = new Set();
+  const FORCED_NPCS = new Set();
   const FACE_DIR = (P("faceImageDir") || "img/imecustomfaces").replace(
     /\/+$/,
     ""
@@ -577,12 +579,12 @@
       scene._npcSprites = [];
       clearPortraitWindows();
 
-      // csak azok az eventek, ahol [IME] vagy <IME> jelen van
-      const candidates = $gameMap
-        .events()
-        .map((ev) => ({ ev, info: imeTagInfo(ev) }))
-        .filter((x) => x.info.present);
-
+      const all = $gameMap.events().map((ev) => ({ ev, info: imeTagInfo(ev) }));
+      const candidates = all.filter(
+        ({ ev, info }) =>
+          (info.present || FORCED_NPCS.has(ev.eventId())) &&
+          !HIDDEN_NPCS.has(ev.eventId())
+      );
       for (const { ev, info } of candidates) {
         const meta = readPortraitMeta(ev);
         const customW = info.width > 0 ? info.width : ICON_W;
@@ -723,4 +725,91 @@
       IRMap.emit("poi-click", { poi: spr._poi });
     }
   });
+  // ─── 2) Game_System kibővítése, hogy mentse a két tömböt ────────────
+  const _Npc_Game_System_initialize = Game_System.prototype.initialize;
+  Game_System.prototype.initialize = function () {
+    _Npc_Game_System_initialize.call(this);
+    this._hiddenNpcIds = this._hiddenNpcIds || [];
+    this._forcedNpcIds = this._forcedNpcIds || [];
+  };
+
+  // ─── 3) GameObject-ok létrehozásakor szinkronizáljuk a Set-eket ───────
+  const _Npc_DataManager_createGameObjects = DataManager.createGameObjects;
+  DataManager.createGameObjects = function () {
+    _Npc_DataManager_createGameObjects.apply(this, arguments);
+    // ha már volt mentés:
+    this._loadNpcPersistence();
+  };
+  DataManager._loadNpcPersistence = function () {
+    // a Game_Systemből tömbbé, Set-be töltés
+    const gs = $gameSystem;
+    HIDDEN_NPCS.clear();
+    FORCED_NPCS.clear();
+    (gs._hiddenNpcIds || []).forEach((id) => HIDDEN_NPCS.add(id));
+    (gs._forcedNpcIds || []).forEach((id) => FORCED_NPCS.add(id));
+  };
+
+  // ─── 4) SaveContents / ExtractContents: a két tömb mentése betöltése ──
+  const _Npc_DataManager_makeSaveContents = DataManager.makeSaveContents;
+  DataManager.makeSaveContents = function () {
+    const contents = _Npc_DataManager_makeSaveContents.apply(this, arguments);
+    contents.hiddenNpcIds = Array.from(HIDDEN_NPCS);
+    contents.forcedNpcIds = Array.from(FORCED_NPCS);
+    return contents;
+  };
+  const _Npc_DataManager_extractSaveContents = DataManager.extractSaveContents;
+  DataManager.extractSaveContents = function (contents) {
+    _Npc_DataManager_extractSaveContents.apply(this, arguments);
+    // elmentett tömbök átadása a Game_System-nek
+    $gameSystem._hiddenNpcIds = contents.hiddenNpcIds || [];
+    $gameSystem._forcedNpcIds = contents.forcedNpcIds || [];
+  };
+
+  // ─── 5) A plugin‐commandok frissítése, hogy Game_System-et is írjanak ──
+  const _Npc_Interpreter_pluginCommand =
+    Game_Interpreter.prototype.pluginCommand;
+  Game_Interpreter.prototype.pluginCommand = function (command, args) {
+    _Npc_Interpreter_pluginCommand.apply(this, arguments);
+    const cmd = command.toLowerCase();
+    // ─ RemoveEventFromTheMap ────────────────────────────────────────────
+    if (cmd === "removeeventfromthemap") {
+      let id = args.length ? Number(args[0]) : null;
+      if (!id) {
+        const sc = IRMap.currentScene();
+        const act = sc && sc._npcActive;
+        id = act && act._ev && act._ev.eventId();
+      }
+      if (id != null) {
+        HIDDEN_NPCS.add(id);
+        $gameSystem._hiddenNpcIds = Array.from(HIDDEN_NPCS);
+        // azonnali hatás: elrejtjük a sprite-ot
+        const sc = IRMap.currentScene();
+        sc &&
+          sc._npcSprites.forEach((sp) => {
+            if (sp._ev.eventId() === id) sp.visible = false;
+          });
+      }
+    }
+    // ─ AddEventToTheMap ─────────────────────────────────────────────────
+    else if (cmd === "addeventtothemap") {
+      let id = args.length ? Number(args[0]) : null;
+      if (!id) {
+        const sc = IRMap.currentScene();
+        const act = sc && sc._npcActive;
+        id = act && act._ev && act._ev.eventId();
+      }
+      if (id != null) {
+        HIDDEN_NPCS.delete(id);
+        FORCED_NPCS.add(id);
+        $gameSystem._hiddenNpcIds = Array.from(HIDDEN_NPCS);
+        $gameSystem._forcedNpcIds = Array.from(FORCED_NPCS);
+        // azonnali hatás: újraépítjük a sprites-listát
+        const sc = IRMap.currentScene();
+        if (sc) {
+          IRMap.emit("scene-close", { scene: sc });
+          IRMap.emit("scene-open", { scene: sc });
+        }
+      }
+    }
+  };
 })();

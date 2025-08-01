@@ -2,7 +2,7 @@
  * @plugindesc InteractiveMapElements – point-of-interest ikonok és címkék az InteractiveRpgMap térképen
  * @target MV
  * @author  Soczó Kristóf
- * @version 0.4
+ * @version 0.6
  *
  * @help
  * ---------------------------------------------------------------------------
@@ -11,53 +11,77 @@
  *   ▸ A maszk automatikusan a megfelelő ablakméretre lesz belőve.
  * ---------------------------------------------------------------------------
  *
+ * @param ---Elements GUI---
+ * @desc Elements gui settings
+ * @default ------------------------------
+ *
  * @param showPoiLabel
- * @text Show POI Labels
+ * @parent ---Elements GUI---
+ * @text Show Element Labels
  * @type boolean
  * @on Show
  * @off Hide
  * @default true
+ * @desc By default, display the name of the element on the map below its image.
  *
  * @param portraitTextWindHeight
+ * @parent ---Elements GUI---
  * @text Portrait Text Window Height
  * @type number
  * @min 120
  * @default 240
+ * @desc Portrait text window height (in px) The name and description of the Elements appear here.
  *
  * @param portraitTextWindWidth
+ * @parent ---Elements GUI---
  * @text Portrait Text Window Width
  * @type number
  * @min 120
  * @default 200
+ * @desc The Portrait text window width (in px). The name and description of the Elements appear here.
  *
  * @param portraitImgWinHeight
+ * @parent ---Elements GUI---
  * @text Portrait Image Window Height
  * @type number
  * @min 120
  * @default 240
+ * @desc Portrait img window height (in px). The extra portrait image appears
  *
  * @param portraitImgWinWidth
+ * @parent ---Elements GUI---
  * @text Portrait Image Window Width
  * @type number
  * @min 120
  * @default 240
+ * @desc Portrait img window width (in px). The extra portrait image appears
  *
  * @param portraitWindowSkin
+ * @parent ---Elements GUI---
  * @text Portrait Window Skin
  * @type file
  * @dir img/system
  * @desc If specified, the portrait window will use this window skin.
  *
  * @param optionsWindowSkin
+ * @parent ---Elements GUI---
  * @text Options Window Skin
  * @type file
  * @dir img/system
  * @desc If specified, the options menu will use this window skin.
  *
+ * @param optionFontSize
+ * @parent ---Elements GUI---
+ * @text Options menu font size
+ * @type number
+ * @min 1
+ * @default 15
+ * @desc Set your font size in the option interact menu
+ *
  * @param pois
- * @text Points of Interest
+ * @text ELEMENTS CONFIG
  * @type struct<PoiConfig>[]
- * @desc Define the Elements for your maps.
+ * @desc Define the Elements(POI's) for your maps.
  */
 
 /*~struct~PoiConfig:
@@ -159,6 +183,8 @@
  * @value teleport
  * @option Open / load the related map
  * @value openload
+ * @option Battle Processing
+ * @value processbattle
  * @option Run Common event
  * @value runcommonevent
  *
@@ -181,6 +207,18 @@
  * @default
  * @desc Format: Choose the Common event which want to run | Required if interactMode=runcommonevent.
  *
+ * @param processBattle
+ * @text Battle Processing
+ * @type text
+ * @default
+ * @desc Format: Define the enemy (troops) + params like: Bat*2 gameover canescape | Required if interactMode=processbattle.
+ *
+ * @param InteractOptions
+ * @text Interaction options
+ * @type text[]
+ * @default ["teleport"]
+ * @desc Supported commands: teleport, run common event, open map (max 3 option)
+ *
  */
 (() => {
   "use strict";
@@ -198,6 +236,7 @@
 
   const PORTRAIT_SKIN = P("portraitWindowSkin") || "";
   const OPTIONS_SKIN = P("optionsWindowSkin") || "";
+  const OPTION_FONT_SIZE = +P("optionFontSize") || 15;
 
   const LABEL_W = 256;
   const LABEL_H = 24;
@@ -227,6 +266,8 @@
     TELEPORT: "teleport",
     OPENLOAD: "openload",
     RUNCOMMONEVENT: "runcommonevent",
+    PROCESSBATTLE: "processbattle",
+    BATTLE: "battle",
   });
   function parseInteractModeRaw(v) {
     const s = String(v || "")
@@ -238,13 +279,15 @@
       s === "both" ||
       s === "teleport" ||
       s === "openload" ||
-      s === "runcommonevent"
+      s === "runcommonevent" ||
+      s === "processbattle"
     )
       return s;
     if (s.includes("portrait and option")) return IM.BOTH;
     if (s.includes("open portrait")) return IM.PORTRAIT;
     if (s.includes("option")) return IM.OPTIONS;
     if (s.includes("teleport")) return IM.TELEPORT;
+    if (s === "processbattle") return IM.PROCESSBATTLE;
     if (s.includes("openload") || (s.includes("open") && s.includes("related")))
       return IM.OPENLOAD;
     if (s.includes("common") && s.includes("event")) return IM.RUNCOMMONEVENT;
@@ -255,6 +298,13 @@
   const RAW = JSON.parse(P("pois") || "[]");
   const POIS = RAW.map((e, i) => {
     const j = JSON.parse(e);
+    const rawOpts = JSON.parse(j.InteractOptions || "[]");
+    const interactOptions = rawOpts.slice(0, 3).map((str) => {
+      const [rawKey, rawLabel] = str.split(/\s*:\s*/, 2);
+      const key = rawKey.trim().toLowerCase().replace(/\s+/g, "");
+      const label = (rawLabel || rawKey).trim();
+      return { key, label };
+    });
     return {
       id: i, // stabil belső ID
       mapId: Number(j.mapId) || 0,
@@ -274,6 +324,8 @@
       relatedMapId: +j.relatedMapId || 0,
       teleportLocation: j.teleportLocation || "",
       callCommonEvent: +j.callCommonEvent || 0,
+      processBattle: String(j.processBattle || ""),
+      interactOptions,
     };
   });
 
@@ -342,6 +394,8 @@
         "teleport",
         "openload",
         "runcommonevent",
+        "processbattle",
+        "battle",
       ].includes(s)
     )
       return s;
@@ -352,6 +406,7 @@
     if (s.includes("openload") || (s.includes("open") && s.includes("related")))
       return "openload";
     if (s.includes("common") && s.includes("event")) return "runcommonevent";
+    if (s.includes("battle")) return "processbattle";
     return "portrait";
   }
 
@@ -514,9 +569,28 @@
 
   // 4.3  Opciós menü (Command)
   class PoiOptions extends Window_Command {
-    constructor(poi, x, y) {
+    constructor(poi, x = 0, y = 0, options = []) {
+      // 0) maximum 3 elemre vágjuk
+      const trimmed = Array.isArray(options) ? options.slice(0, 3) : [];
+
+      // 1) ideiglenesen létrehozzuk az ablakot (még rossz listával)
       super(x, y);
+
+      // 2) végleges adatok
       this._poi = poi;
+      this._options = trimmed;
+
+      // 3) parancslista teljes újraépítése
+      this.clearCommandList();
+      this.makeCommandList();
+
+      // 4) méretek újraszámítása a tényleges sor­szám és betűméret alapján
+      this.width = this.windowWidth(); // (ha változtatni szeretnéd)
+      this.height = this.windowHeight(); // helyes magasság
+      this.createContents(); // új bitmap
+      this.refresh(); // kirajzolás
+
+      // 5) skin + anim
       applySkin(this, OPTIONS_SKIN);
       this.openness = 0;
       this.open();
@@ -524,16 +598,49 @@
     windowWidth() {
       return 180;
     }
-    numVisibleRows() {
-      return this.maxItems();
+    standardFontSize() {
+      return OPTION_FONT_SIZE;
     }
     makeCommandList() {
-      this.addCommand("Opció 1", "opt1");
-      this.addCommand("Opció 2", "opt2");
-      this.addCommand("Opció 3", "opt3");
+      const list = Array.isArray(this._options) ? this._options : [];
+      if (list.length === 0) {
+        this.addCommand("OK", "cancel"); // fallback, ne fagyjon üresen
+      } else {
+        list.forEach((opt) => this.addCommand(opt.label, opt.key));
+      }
     }
+    numVisibleRows() {
+      return Math.max(1, this.maxItems());
+    }
+
     processOk() {
-      IME.emit("poi-option", { poi: this._poi, opt: this.currentSymbol() });
+      const cmd = this.currentSymbol();
+      switch (cmd) {
+        case "teleport":
+          IME.emit("poi-teleport", {
+            poi: this._poi,
+            location: this._poi.teleportLocation,
+          });
+          break;
+        case "openload":
+          IME.emit("poi-open-related", {
+            poi: this._poi,
+            mapId: this._poi.relatedMapId,
+          });
+          break;
+        case "runcommonevent":
+          IME.emit("poi-run-common-event", {
+            poi: this._poi,
+            commonEventId: this._poi.callCommonEvent,
+          });
+          break;
+        case "battle":
+          IME.emit("poi-battle", { poi: this._poi });
+          break;
+        default:
+          IME.emit("poi-click", { poi: this._poi });
+          IRMap.emit("poi-click", { poi: this._poi });
+      }
       this._closeSelf();
     }
     processCancel() {
@@ -545,6 +652,24 @@
     }
   }
 
+  const _update = PoiOptions.prototype.update;
+  PoiOptions.prototype.update = function () {
+    _update.call(this);
+
+    if (!this.isOpen()) return;
+
+    if (TouchInput.isTriggered()) {
+      const x = TouchInput.x,
+        y = TouchInput.y;
+      const inside =
+        x >= this.x &&
+        x < this.x + this.width &&
+        y >= this.y &&
+        y < this.y + this.height;
+
+      if (!inside) this._closeSelf();
+    }
+  };
   // 4.4  POI Sprite
   class PoiSprite extends Sprite {
     constructor(poi, scene, win) {
@@ -760,7 +885,12 @@
     const poi = spr.poi;
     if (!poi.interactable) return;
 
-    // bezárjuk a régi UI-t
+    if (poi.interactMode === IM.PROCESSBATTLE && poi.processBattle) {
+      _imeStartBattle(poi);
+      return;
+    }
+
+    // 1) Régi UI törlése
     if (scene._poiImgWin) {
       scene.removeChild(scene._poiImgWin);
       scene._poiImgWin = null;
@@ -774,67 +904,340 @@
     }
     scene._poiMenu = null;
 
+    // 2) Mód és alappozíció
     const mode = normalizeMode(poi.interactMode);
-    const baseX = win.x + win.padding,
-      baseY = win.y + win.padding;
+    const baseX = win.x + win.padding;
+    const baseY = win.y + win.padding;
 
-    if (mode === "portrait" || mode === "both") {
-      if (poi.portraitImg) {
-        scene._poiImgWin = new PoiPortraitImg(poi, baseX, baseY);
-        scene.addChild(scene._poiImgWin);
-      }
-      if (poi.name) {
-        scene._poiTxtWin = new PoiPortraitText(
-          poi,
-          baseX,
-          baseY + (scene._poiImgWin ? IMG_WIN_H : 0)
-        );
-        scene.addChild(scene._poiTxtWin);
-      }
+    // ─── PORTRÉ-ÁG (CSAK portrait vagy both) ───────────────────
+    if ((mode === IM.PORTRAIT || mode === IM.BOTH) && poi.portraitImg) {
+      scene._poiImgWin = new PoiPortraitImg(poi, baseX, baseY);
+      scene.addChild(scene._poiImgWin);
+    }
+    if ((mode === IM.PORTRAIT || mode === IM.BOTH) && poi.name) {
+      const yOffset = scene._poiImgWin ? IMG_WIN_H : 0;
+      scene._poiTxtWin = new PoiPortraitText(poi, baseX, baseY + yOffset);
+      scene.addChild(scene._poiTxtWin);
     }
 
-    if (mode === "options" || mode === "both") {
-      const menu = new PoiOptions(poi, 0, 0);
-      const mw = menu.windowWidth(),
-        mh = menu.height;
-      const innerX = win.x + win.padding,
-        innerY = win.y + win.padding;
-      const innerW = win.contentsWidth(),
-        innerH = win.contentsHeight();
-      let mx = spr.x + win.x + win.padding,
-        my = spr.y + win.y + win.padding - mh;
-      if (mx + mw > innerX + innerW) mx = innerX + innerW - mw;
-      if (mx < innerX) mx = innerX;
-      if (my < innerY) my = innerY;
-      if (my + mh > innerY + innerH) my = innerY + innerH - mh;
-      menu.x = mx;
-      menu.y = my;
+    // 4) Options ága
+    if (
+      (mode === IM.OPTIONS || mode === IM.BOTH) &&
+      poi.interactOptions.length
+    ) {
+      // 4.1) Létrehozunk egy ideiglenes menüt
+      const menu = new PoiOptions(poi, 0, 0, poi.interactOptions);
+      // 4.2) Lekérjük a méreteit
+      const mw = menu.windowWidth();
+      const mh = menu.numVisibleRows() * menu.lineHeight();
+
+      // 4.3) A win belső koordinátái
+      const innerX = win.x + win.padding;
+      const innerY = win.y + win.padding;
+      const innerW = win.contentsWidth();
+      const innerH = win.contentsHeight();
+
+      // 4.4) Sprite skálázott mérete
+      const bmp = spr._icon.bitmap;
+      const scale = spr._icon.scale.x;
+      const iconW = bmp ? bmp.width * scale : 0;
+      const gap = 8;
+
+      // 4.5) Jobb oldali próbálkozás
+      let mx = innerX + spr.x + iconW / 2 + gap;
+      if (mx + mw > innerX + innerW) {
+        // ha nem fér, balra pakoljuk
+        mx = innerX + spr.x - iconW / 2 - gap - mw;
+      }
+
+      // 4.6) Függőleges középre igazítás
+      let my = innerY + spr.y - mh / 2;
+      my = Math.max(innerY, Math.min(my, innerY + innerH - mh));
+
+      // 4.7) Végleges pozíció alkalmazása és kirakás
+      menu.x = Math.round(mx);
+      menu.y = Math.round(my);
       scene.addWindow(menu);
       scene._poiMenu = menu;
     }
+    // 4.8) Ha nincs egyetlen opció sem, vissza a sima kattintásra
+    else if (mode === IM.OPTIONS) {
+      IME.emit("poi-click", { poi });
+      IRMap.emit("poi-click", { poi });
+    }
 
-    if (mode === "teleport") {
+    // 5) Teleport / openload / runcommonevent ágak
+    if (mode === IM.TELEPORT) {
       IME.emit("poi-teleport", { poi, location: poi.teleportLocation });
       return;
     }
-    if (mode === "openload") {
+    if (mode === IM.OPENLOAD) {
       IME.emit("poi-open-related", { poi, mapId: poi.relatedMapId });
       return;
     }
-    if (mode === "runcommonevent") {
-      const ceId = +poi.callCommonEvent || 0;
-      IME.emit("poi-run-common-event", { poi, commonEventId: ceId });
+    if (mode === IM.RUNCOMMONEVENT) {
+      IME.emit("poi-run-common-event", {
+        poi,
+        commonEventId: poi.callCommonEvent,
+      });
       return;
     }
 
+    // 6) Simai kattintás fallback
     IME.emit("poi-click", { poi });
     IRMap.emit("poi-click", { poi });
   }
-
   /* ----------------------------------[ util ]------------------------------ */
   function applySkin(win, skin) {
     if (!skin) return;
     win.windowskin = ImageManager.loadSystem(skin);
     if (win._refreshAllParts) win._refreshAllParts();
   }
+
+  function _imeStartBattle(poi) {
+    if (!poi || !poi.processBattle) return;
+
+    // formátum: "TroopName [gameover] [canescape]"
+    const parts = poi.processBattle.split(/\s+/);
+    const troopName = parts[0];
+    const flags = parts.slice(1).map((f) => f.toLowerCase());
+
+    const troop = $dataTroops.find((t) => t && t.name === troopName);
+    if (!troop) {
+      console.error(`[IME] processBattle: Troop not found '${troopName}'`);
+      return;
+    }
+    const canEscape = flags.includes("canescape");
+    const canLose = !flags.includes("gameover");
+
+    BattleManager.setup(troop.id, canEscape, canLose);
+    SceneManager.push(Scene_Battle);
+  }
+
+  IME.on("poi-battle", ({ poi }) => _imeStartBattle(poi));
+
+  // ——— Plugin Commands: ShowElements / DisableElements ———
+  var _Game_Interpreter_pluginCommand =
+    Game_Interpreter.prototype.pluginCommand;
+  Game_Interpreter.prototype.pluginCommand = function (command, args) {
+    _Game_Interpreter_pluginCommand.call(this, command, args);
+
+    // Find POI by its configured name
+    function findPoiByName(name) {
+      return POIS.find(function (p) {
+        return p.name.toLowerCase() === name.toLowerCase();
+      });
+    }
+
+    switch (command) {
+      case "ShowElements": {
+        var name = args.join(" ");
+        if (!name) {
+          console.error("ShowElements requires an element name");
+          break;
+        }
+        var poi = findPoiByName(name);
+        if (poi) {
+          poi.visible = true;
+          IME.showPoi(poi.id);
+        } else {
+          console.warn("ShowElements: no POI named '" + name + "'");
+        }
+        break;
+      }
+      case "DisableElements": {
+        var name = args.join(" ");
+        if (!name) {
+          console.error("DisableElements requires an element name");
+          break;
+        }
+        var poi = findPoiByName(name);
+        if (poi) {
+          poi.visible = false;
+          IME.hidePoi(poi.id);
+        } else {
+          console.warn("DisableElements: no POI named '" + name + "'");
+        }
+        break;
+      }
+      case "ChangeElementsPosition": {
+        var name = args[0];
+        var x = parseInt(args[1], 10);
+        var y = parseInt(args[2], 10);
+        if (!name || isNaN(x) || isNaN(y)) {
+          console.error(
+            "ChangeElementsPosition requires: <element name> <x> <y> (all mandatory)"
+          );
+          break;
+        }
+        var poi = findPoiByName(name);
+        if (poi) {
+          // override data
+          poi.x = x;
+          poi.y = y;
+          // reposition any existing sprite
+          var scene = SceneManager._scene;
+          if (scene && scene._imePoiSprites) {
+            var spr = scene._imePoiSprites.find(function (s) {
+              return s.poi.id === poi.id;
+            });
+            if (spr) spr._updatePos();
+          }
+        } else {
+          console.warn("ChangeElementsPosition: no POI named '" + name + "'");
+        }
+        break;
+      }
+      case "ChangeElementsImg": {
+        var name = args[0];
+        var img = args[1];
+        if (!name || !img) {
+          console.error(
+            "ChangeElementsImg requires: <element name> <image filename> (both mandatory)"
+          );
+          break;
+        }
+        // helper: POI keresése név alapján
+        function findPoiByName(name) {
+          return POIS.find(function (p) {
+            return p.name.toLowerCase() === name.toLowerCase();
+          });
+        }
+        var poi = findPoiByName(name);
+        if (!poi) {
+          console.warn("ChangeElementsImg: no POI named '" + name + "'");
+          break;
+        }
+        // ha van kiterjesztés, levágjuk (.png, .jpg, .jpeg, .bmp)
+        var baseName = img.replace(/\.(png|jpe?g|bmp)$/i, "");
+        // felülírjuk az adatot
+        poi.img = baseName;
+        // ha már kirajzolva, frissítjük a sprite-ot is
+        var scene = SceneManager._scene;
+        if (scene && scene._imePoiSprites) {
+          var spr = scene._imePoiSprites.find(function (s) {
+            return s.poi.id === poi.id;
+          });
+          if (spr) {
+            var newBmp = ImageManager.loadBitmap(
+              "img/interactivelements/",
+              baseName,
+              0,
+              true
+            );
+            newBmp.addLoadListener(function () {
+              spr._icon.bitmap = newBmp;
+              // újraszámoljuk a skálát és a hitArea-t
+              spr._baseScale =
+                Math.min(poi.w / newBmp.width, poi.h / newBmp.height, 1) || 1;
+              spr._icon._bottomPadPx = _calcBottomPad(newBmp) || 0;
+              spr._updatePos();
+            });
+          }
+        }
+        break;
+      }
+      case "ElementsDisableInteract": {
+        var name = args.join(" ");
+        if (!name) {
+          console.error("ElementsDisableInteract requires an element name");
+          break;
+        }
+        var poi = findPoiByName(name);
+        if (!poi) {
+          console.warn("ElementsDisableInteract: no POI named '" + name + "'");
+          break;
+        }
+        // kikapcsoljuk az interaktivitást
+        poi.interactable = false;
+        // ha már van sprite, töröljük a kattinthatóságot
+        var scene = SceneManager._scene;
+        if (scene && scene._imePoiSprites) {
+          var spr = scene._imePoiSprites.find(function (s) {
+            return s.poi.id === poi.id;
+          });
+          if (spr) {
+            IRMap.unregisterClickable(spr);
+            spr._icon.interactive = false;
+            spr._icon.buttonMode = false;
+          }
+        }
+        break;
+      }
+      case "ElementsEnableInteract": {
+        var name = args.join(" ");
+        if (!name) {
+          console.error("ElementsEnableInteract requires an element name");
+          break;
+        }
+        var poi = findPoiByName(name);
+        if (!poi) {
+          console.warn("ElementsEnableInteract: no POI named '" + name + "'");
+          break;
+        }
+        // bekapcsoljuk az interaktivitást
+        poi.interactable = true;
+        // ha már van sprite, újra regisztráljuk
+        var scene = SceneManager._scene;
+        if (scene && scene._imePoiSprites) {
+          var spr = scene._imePoiSprites.find(function (s) {
+            return s.poi.id === poi.id;
+          });
+          if (spr) {
+            spr._icon.interactive = true;
+            spr._icon.buttonMode = true;
+            IRMap.registerClickable(
+              spr,
+              function () {
+                handlePoiClick(spr._scene, spr._win, spr);
+              },
+              { blink: true }
+            );
+          }
+        }
+        break;
+      }
+    }
+  };
+  function _imeSerializePoi(p) {
+    return {
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      visible: p.visible,
+      img: p.img,
+      interactable: p.interactable,
+    };
+  }
+
+  /* ----- SAVE: plusz adat becsatolása ----- */
+  const _IME_DM_makeSaveContents = DataManager.makeSaveContents;
+  DataManager.makeSaveContents = function () {
+    const contents = _IME_DM_makeSaveContents.call(this);
+
+    /* minden POI aktuális állapota */
+    contents.imePoiState = POIS.map(_imeSerializePoi);
+
+    return contents;
+  };
+
+  /* ----- LOAD: adatok visszatöltése ----- */
+  const _IME_DM_extractSaveContents = DataManager.extractSaveContents;
+  DataManager.extractSaveContents = function (contents) {
+    _IME_DM_extractSaveContents.call(this, contents);
+
+    const arr = contents.imePoiState;
+    if (Array.isArray(arr)) {
+      arr.forEach((saved) => {
+        const p = POIS[saved.id];
+        if (p) {
+          p.x = saved.x;
+          p.y = saved.y;
+          p.visible = saved.visible;
+          p.img = saved.img;
+          p.interactable = saved.interactable;
+        }
+      });
+    }
+  };
 })();
