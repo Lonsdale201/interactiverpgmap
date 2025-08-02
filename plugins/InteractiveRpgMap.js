@@ -679,6 +679,14 @@
     return 0;
   }
 
+  function loadMapJson(mapId) {
+    const filename = `data/Map${String(mapId).padStart(3, "0")}.json`;
+    return fetch(filename).then((r) => {
+      if (!r.ok) throw new Error(`Could not load ${filename}`);
+      return r.json();
+    });
+  }
+
   /* -------------------------------------------------------------
    *  Helper: param-string  →  keyCode
    * ----------------------------------------------------------- */
@@ -794,13 +802,14 @@
    * Compute world->image transform for a bitmap+cfg *for the CURRENT MAP ONLY*.
    * Returns {scaleX, scaleY, offsetX, offsetY, usableW, usableH}.
    */
-  function calcXform(bmp, cfg) {
+  function calcXform(bmp, cfg, mapData) {
     const iw = bmp.width,
       ih = bmp.height;
     const tileW = $gameMap.tileWidth(),
       tileH = $gameMap.tileHeight();
-    const tilesX = $dataMap.width,
-      tilesY = $dataMap.height;
+    const md = mapData || $dataMap;
+    const tilesX = md.width,
+      tilesY = md.height;
     const worldPxW = tilesX * tileW,
       worldPxH = tilesY * tileH;
 
@@ -813,6 +822,7 @@
 
     const ppt = pptFor(cfg);
     let scaleX, scaleY;
+
     if (ppt > 0) {
       const expectW = tilesX * ppt;
       const expectH = tilesY * ppt;
@@ -832,9 +842,16 @@
       scaleX = usableW / worldPxW;
       scaleY = usableH / worldPxH;
     }
-    return { scaleX, scaleY, offsetX: offX, offsetY: offY, usableW, usableH };
-  }
 
+    return {
+      scaleX,
+      scaleY,
+      offsetX: offX,
+      offsetY: offY,
+      usableW,
+      usableH,
+    };
+  }
   /**
    * Current map: tile coords -> image pixel coords (center of tile).
    */
@@ -1783,6 +1800,14 @@
         return;
       }
 
+      // ─── ShowCoord: kiírja a játékos tile-koordinátáit ──────────────
+      if (e === "showcoord") {
+        const px = $gamePlayer.x;
+        const py = $gamePlayer.y;
+        pieces.push(`Coordinate X: ${px} Y: ${py}`);
+        return;
+      }
+
       // 2) showbreadcumb / show breadcumb [+ opcionális topleveloff flag]
       if (e.startsWith("showbreadcumb")) {
         if (this._breadcrumb.length > 1) {
@@ -1831,35 +1856,23 @@
     const cfg =
       typeof findCfgForMapId === "function" ? findCfgForMapId(mapId) : null;
 
-    // Hozzáférés ellenőrzés
+    // Hozzáférés ellenőrzés (meglévő logikád)
     if (!IRMap.canOpenMap(mapId)) {
       const msg = IRMap.getOpenMapFailureMessage(mapId) || "";
       if (msg.trim()) {
-        // ha van üzenet → tegyük ki és zárjuk azonnal a Scene-t, hogy most látszódjon
         $gameMessage.add(
           Window_Base.prototype.convertEscapeCharacters.call(this, msg)
         );
         SceneManager.pop();
       }
-      // ha nincs üzenet → csendben elutasítjuk, nem zárjuk be
       return;
     }
 
-    // Ha nincs egyedi konfig: fallback (ha engedélyezett)
+    // Fallback, ha nincs konfiguráció…
     if (!cfg) {
       if (typeof ENABLE_FALLBACK !== "undefined" && ENABLE_FALLBACK) {
-        if (typeof FALLBACK_IMG !== "undefined" && FALLBACK_IMG) {
-          // Fallback kép megnyitása külön scene-ben (meglévő logikád szerint)
-          if (typeof Scene_FallbackMap !== "undefined") {
-            SceneManager.push(Scene_FallbackMap);
-          } else {
-            $gameMessage.add(
-              Window_Base.prototype.convertEscapeCharacters.call(
-                this,
-                TEXT_NO_MAP || "No map available."
-              )
-            );
-          }
+        if (typeof Scene_FallbackMap !== "undefined") {
+          SceneManager.push(Scene_FallbackMap);
         } else {
           $gameMessage.add(
             Window_Base.prototype.convertEscapeCharacters.call(
@@ -1872,122 +1885,128 @@
       return;
     }
 
+    // előkészítés
     this._breadcrumb = IRMap.getAncestorChain(mapId).reverse();
-
     const win = this._win;
     const oldCfg = this._cfg;
     this._cfg = cfg;
     this._selectedName = "";
 
-    // Új bitmap betöltése
+    // betöltjük az új képet
     const bmp = ImageManager.loadBitmap("img/maps/", cfg.fullMapImage, 0, true);
     bmp.addLoadListener(() => {
-      // 1) ablak tartalom frissítése
+      // 1) ablak tartalma
       win.setBitmap(bmp);
       win._scaleMode = effScaleMode(cfg);
       win._recalcCamera(true);
       this._ensureScrollIndicators();
       this._updateTopLevel();
 
-      this._xform =
-        typeof calcXform === "function" ? calcXform(bmp, cfg) : null;
-      if (win._canPan) {
-        const pos =
-          typeof worldToImage === "function"
-            ? worldToImage($gamePlayer.x, $gamePlayer.y, this._xform)
-            : { imgX: bmp.width / 2, imgY: bmp.height / 2 };
-        win.centerOnImagePoint(pos.imgX, pos.imgY);
-      }
+      // 2) helper, ami a transzform után elvégzi a 4–8. lépést
+      const applyTransform = (mapData) => {
+        // 2a) új xform kiszámolása a betöltött JSON alapján
+        this._xform = calcXform(bmp, cfg, mapData);
 
-      // 4) overlay réteg újraépítése
-      //    – markerLayer ürítése, maszk reset
-      if (win._markerLayer) {
-        try {
+        // 2b) ha panorámázható, középre állítjuk a játékos posztját
+        if (win._canPan) {
+          const pos =
+            typeof worldToImage === "function"
+              ? worldToImage($gamePlayer.x, $gamePlayer.y, this._xform)
+              : { imgX: bmp.width / 2, imgY: bmp.height / 2 };
+          win.centerOnImagePoint(pos.imgX, pos.imgY);
+        }
+
+        // 4) markerLayer és mask törlése
+        if (win._markerLayer) {
           win._markerLayer.removeChildren();
-        } catch (e) {}
-        if (win._poiMask) {
-          try {
-            if (win._markerLayer.mask === win._poiMask)
-              win._markerLayer.mask = null;
-          } catch (e) {}
+          if (win._markerLayer.mask === win._poiMask) {
+            win._markerLayer.mask = null;
+          }
           win._poiMask = null;
         }
-      }
-      //    – feliratok (map name / image) törlése: egyszerűen ürítsük ki az overlayRoot‑ot
-      if (this._overlayRoot) {
-        try {
+
+        // 5) overlayRoot (map‐név, POI, egyebek) törlése
+        if (this._overlayRoot) {
           this._overlayRoot.removeChildren();
-        } catch (e) {}
-        this._ensureScrollIndicators();
+          this._ensureScrollIndicators();
+        }
+
+        // 6) map‐név kirakása (kép vagy szöveg)
+        const winX = win.x,
+          winY = win.y,
+          winW = win.width,
+          winH = win.height;
+        if (cfg.MapNameAsImage) {
+          const lb = ImageManager.loadBitmap(
+            "img/maplabels/",
+            cfg.MapNameAsImage,
+            0,
+            true
+          );
+          const sp = new Sprite(lb);
+          sp.anchor.set(0.5, 0);
+          sp.x = winX + winW / 2;
+          sp.y = winY + win.padding;
+          lb.addLoadListener(() => {
+            const maxW = winW * 0.25;
+            if (lb.width > maxW) {
+              const s = maxW / lb.width;
+              sp.scale.set(s, s);
+            }
+          });
+          this._overlayRoot.addChild(sp);
+        } else if (cfg.mapDisplayName) {
+          const text = cfg.mapDisplayName;
+          const lh = win.lineHeight();
+          const bm = new Bitmap(winW, lh);
+          bm.drawText(text, 0, 0, winW, lh, "center");
+          const sp = new Sprite(bm);
+          sp.x = winX + win.padding;
+          sp.y = winY + win.padding;
+          this._overlayRoot.addChild(sp);
+        }
+
+        // 7) minden regisztrált overlay‐fn újrahívása (POI‐k, NPC‐k…)
+        if (Array.isArray(IRMap._overlayFns)) {
+          IRMap._overlayFns.forEach((fn) => {
+            try {
+              fn(this, win, this._xform);
+            } catch (e) {
+              console.error("[IRMap] overlay fn error:", e);
+            }
+          });
+        }
+
+        // 8) marker frissítés és események
+        if (this._refreshMarker) this._refreshMarker();
+        IRMap.emit &&
+          IRMap.emit("bitmap-loaded", {
+            scene: this,
+            win,
+            cfg: this._cfg,
+            bmp,
+            xform: this._xform,
+          });
+        IRMap.emit &&
+          IRMap.emit("map-switched", {
+            scene: this,
+            win,
+            from: oldCfg ? oldCfg.mapId || oldCfg.editorMapName : null,
+            to: cfg.mapId || cfg.editorMapName,
+          });
+      };
+
+      // 3) döntés: ha betöltendő új mapId, akkor fetch+apply, különben globálisból
+      if ($dataMapInfos[mapId] && mapId !== $gameMap.mapId()) {
+        loadMapJson(mapId)
+          .then((json) => applyTransform(json))
+          .catch((err) => {
+            console.warn("[IRMap] loadMapJson failed:", err);
+            applyTransform($dataMap);
+          });
+      } else {
+        applyTransform($dataMap);
       }
-
-      // 5) Map label (szöveg vagy kép) újra kirakása
-      const winX = win.x,
-        winY = win.y,
-        winW = win.width,
-        winH = win.height;
-
-      if (cfg.MapNameAsImage) {
-        const labelBmp = ImageManager.loadBitmap(
-          "img/maplabels/",
-          cfg.MapNameAsImage,
-          0,
-          true
-        );
-        const labelSpr = new Sprite(labelBmp);
-        labelSpr.anchor.set(0.5, 0);
-        labelSpr.x = winX + winW / 2;
-        labelSpr.y = winY + win.padding;
-        // ha az auto‑scale a globális paramodban van, itt opcionálisan ismét skálázhatod
-        labelBmp.addLoadListener(() => {
-          const maxW = winW * 0.25;
-          if (labelBmp.width > maxW) {
-            const scale = maxW / labelBmp.width;
-            labelSpr.scale.set(scale, scale);
-          }
-        });
-        this._overlayRoot.addChild(labelSpr);
-      } else if (cfg.mapDisplayName) {
-        const text = cfg.mapDisplayName;
-        const lh = win.lineHeight();
-        const textBmp = new Bitmap(winW, lh);
-        textBmp.drawText(text, 0, 0, winW, lh, "center");
-        const textSpr = new Sprite(textBmp);
-        textSpr.x = winX + win.padding;
-        textSpr.y = winY + win.padding;
-        this._overlayRoot.addChild(textSpr);
-      }
-
-      // 6) overlay addonok újrahívása (POI‑k, stb.)
-      if (Array.isArray(IRMap._overlayFns)) {
-        IRMap._overlayFns.forEach((fn) => {
-          try {
-            fn(this, win, this._xform);
-          } catch (e) {
-            console.error("[IRMap] overlay fn error:", e);
-          }
-        });
-      }
-
-      // 7) marker frissítés
-      this._refreshMarker && this._refreshMarker();
-
-      // 8) események – a meglévőkhöz igazodva
-      IRMap.emit &&
-        IRMap.emit("bitmap-loaded", {
-          scene: this,
-          win,
-          cfg: this._cfg,
-          bmp,
-          xform: this._xform,
-        });
-      IRMap.emit &&
-        IRMap.emit("map-switched", {
-          scene: this,
-          win,
-          from: oldCfg ? oldCfg.mapId || oldCfg.editorMapName : null,
-          to: cfg.mapId || cfg.editorMapName,
-        });
     });
   };
 

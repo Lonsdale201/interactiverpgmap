@@ -166,13 +166,13 @@
     }
 
     // ─── Leszármazott-ellenőrzés (bármely mélység) ──────────────────
-    if (
-      currentId && // van aktuális térkép
-      !IRMap.getAncestorChain(id).includes(currentId) // currentId NEM ős
-    ) {
-      sayAndPop("This related map is not a descendant of the current map.");
-      return;
-    }
+    // if (
+    //   currentId &&
+    //   !IRMap.getAncestorChain(id).includes(currentId)
+    // ) {
+    //   sayAndPop("This related map is not a descendant of the current map.");
+    //   return;
+    // }
 
     // ─── Hozzáférési szabályok (core) ───────────────────────────────
     if (IRMap && IRMap.canOpenMap && !IRMap.canOpenMap(id)) {

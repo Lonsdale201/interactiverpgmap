@@ -539,11 +539,8 @@
   //  Overlay regisztráció (csak NPC/event)
   // ──────────────────────────────────────────────────────────────────
   IRMap.registerOverlay((scene, win) => {
-    const cfg = scene.mapConfig && scene.mapConfig();
-    if (!cfg) return;
-
-    // Csak akkor hozzuk az "élő" eventeket, ha a megnyitott szerkesztő‑map = $gameMap
-    let sameMap = $gameMap && $gameMap.mapId() === Number(cfg.mapId);
+    const cfg0 = scene.mapConfig && scene.mapConfig();
+    if (!cfg0) return;
 
     // Maszk (ha még nincs)
     if (!win._poiMask) {
@@ -556,9 +553,11 @@
       win._poiMask = g;
     }
 
+    // Állapot-tárolók
     scene._npcSprites = [];
     scene._npcActive = null;
 
+    // Ablakok törlése
     function clearPortraitWindows() {
       if (scene._npcImgWin) {
         scene.removeChild(scene._npcImgWin);
@@ -571,32 +570,28 @@
       scene._npcActive = null;
     }
 
+    // Teljes újraépítés
     function rebuild() {
-      // törlés
-      (scene._npcSprites || []).forEach(
-        (sp) => sp.parent && sp.parent.removeChild(sp)
-      );
+      // Sprite-ok eltávolítása
+      scene._npcSprites.forEach((sp) => sp.parent && sp.parent.removeChild(sp));
       scene._npcSprites = [];
       clearPortraitWindows();
 
+      // Jelenlegi események lekérdezése
       const all = $gameMap.events().map((ev) => ({ ev, info: imeTagInfo(ev) }));
       const candidates = all.filter(
         ({ ev, info }) =>
           (info.present || FORCED_NPCS.has(ev.eventId())) &&
           !HIDDEN_NPCS.has(ev.eventId())
       );
+
       for (const { ev, info } of candidates) {
         const meta = readPortraitMeta(ev);
         const customW = info.width > 0 ? info.width : ICON_W;
         const customH = info.height > 0 ? info.height : ICON_H;
         const displayName = (
-          meta.name || (ev.event().name || "").replace(NAME_TAG, "").trim()
+          meta.name || ev.event().name.replace(NAME_TAG, "").trim()
         ).trim();
-
-        console.log(
-          `[DEBUG] NPC: "${displayName}" pos: x=${ev.x}, y=${ev.y}` +
-            (info.noname ? " (no-name tag)" : "")
-        );
 
         const sp = new NpcSprite(
           ev,
@@ -612,19 +607,9 @@
           _evFace: meta.face || "",
         };
 
-        // addChild override for diagnostic logging
-        sp._icon.addChild = ((orig) =>
-          function (child) {
-            if (!this.bitmap && !sp._state.sheet) {
-              console.log(
-                `[DEBUG] ${displayName}: ikon bitmap még nincs betöltve`
-              );
-            }
-            return orig.call(this, child);
-          })(sp._icon.addChild);
-
         win._markerLayer.addChild(sp);
         scene._npcSprites.push(sp);
+
         if (!info.noint) {
           IRMap.registerClickable(sp, () => onNpcClick(scene, win, sp), {
             blink: true,
@@ -633,52 +618,45 @@
       }
     }
 
+    // Első építés
     rebuild();
 
-    const onTick = () => {
-      // ha térkép váltás történt ugyanebben a Scene‑ben, építsük újra
-      const cfgNow = scene.mapConfig && scene.mapConfig();
-      const sameNow = $gameMap && $gameMap.mapId() === Number(cfgNow.mapId);
-      if (sameNow !== sameMap) {
-        sameMap = sameNow;
+    // Aktuális térkép ID követése
+    let lastMapId = Number(cfg0.mapId);
+
+    // Ha IRMap küld "map-switched" eseményt, újraépítjük
+    IRMap.on("map-switched", ({ to }) => {
+      const newMapId = Number(to);
+      if (newMapId !== lastMapId) {
+        lastMapId = newMapId;
         clearPortraitWindows();
         rebuild();
       }
+    });
 
-      // layout frissítés
+    // Minden frame-ben frissítjük a sprite-ok pozícióját
+    const updateLayouts = () => {
       for (const sp of scene._npcSprites) {
         sp.updateLayout(sp._poi.name);
       }
     };
+    IRMap.on("update-tick", updateLayouts);
 
+    // Scene bezáráskor takarítunk
     const onClose = ({ scene: sc }) => {
       if (sc !== scene) return;
-      IRMap.off("update-tick", onTick);
+      IRMap.off("map-switched");
+      IRMap.off("update-tick", updateLayouts);
       IRMap.off("scene-close", onClose);
       scene._npcSprites.forEach((sp) => IRMap.unregisterClickable(sp));
-      // takarítás
-      (scene._npcSprites || []).forEach(
-        (sp) => sp.parent && sp.parent.removeChild(sp)
-      );
-      scene._npcSprites = [];
-      if (scene._npcImgWin) {
-        scene.removeChild(scene._npcImgWin);
-        scene._npcImgWin = null;
-      }
-      if (scene._npcTxtWin) {
-        scene.removeChild(scene._npcTxtWin);
-        scene._npcTxtWin = null;
-      }
-      scene._npcActive = null;
+      scene._npcSprites.forEach((sp) => sp.parent && sp.parent.removeChild(sp));
+      clearPortraitWindows();
     };
-
-    IRMap.on("update-tick", onTick);
     IRMap.on("scene-close", onClose);
 
-    // kattintás – csak NPC sprite‑okra
-
+    // NPC-kattintás kezelése
     function onNpcClick(scene, win, spr) {
-      // Előző POI-ablakok bezárása…
+      // bármely korábbi POI/NPC ablak bezárása
       if (scene._poiImgWin) {
         scene.removeChild(scene._poiImgWin);
         scene._poiImgWin = null;
@@ -687,33 +665,20 @@
         scene.removeChild(scene._poiTxtWin);
         scene._poiTxtWin = null;
       }
+      clearPortraitWindows();
 
-      // Korábbi NPC-ablakok bezárása…
-      if (scene._npcImgWin) {
-        scene.removeChild(scene._npcImgWin);
-        scene._npcImgWin = null;
-      }
-      if (scene._npcTxtWin) {
-        scene.removeChild(scene._npcTxtWin);
-        scene._npcTxtWin = null;
-      }
-
-      // csak akkor nyissunk bármit, ha van név ÉS leírás
-      const hasMeta = !!spr._poi.name && !!spr._poi.desc;
-      if (!hasMeta) {
-        // esetleg ide tehetsz valami logot vagy csak simán return
-        return;
-      }
+      // csak ha van meta
+      if (!spr._poi.name || !spr._poi.desc) return;
 
       const baseX = win.x + win.padding;
       const baseY = win.y + win.padding;
 
-      // Portré kép (ha van FACEIMG)
+      // portré kép
       if (spr._poi._evFace) {
         scene._npcImgWin = new NpcPortraitImg(spr._poi, baseX, baseY);
         scene.addChild(scene._npcImgWin);
       }
-      // Név + leírás
+      // név + leírás
       scene._npcTxtWin = new NpcPortraitText(
         spr._poi,
         baseX,
@@ -725,6 +690,7 @@
       IRMap.emit("poi-click", { poi: spr._poi });
     }
   });
+
   // ─── 2) Game_System kibővítése, hogy mentse a két tömböt ────────────
   const _Npc_Game_System_initialize = Game_System.prototype.initialize;
   Game_System.prototype.initialize = function () {

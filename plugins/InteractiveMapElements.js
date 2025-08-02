@@ -249,7 +249,7 @@
  * @param portraitBadge
  * @parent --- Portrait ---
  * @text Portrait Badge
- * @type number
+ * @type text
  * @desc Enter the icon index number; the icon always appears first in the badge.
  *
  * @param portraitBadgeIcon
@@ -1007,7 +1007,11 @@
     };
 
     const buildPoiSpritesForCurrentMap = () => {
-      const list = POI_BY_MAP[cfg0.mapId] || [];
+      // Mindig az AKTUÁLIS konfigot kérjük le, ne a closure‑ben tárolt régit!
+      const curCfg = scene.mapConfig();
+      if (!curCfg) return;
+
+      const list = POI_BY_MAP[curCfg.mapId] || [];
       scene._imePoiSprites = list.map((p) => new PoiSprite(p, scene, win));
     };
 
@@ -1030,9 +1034,10 @@
     scene._imeLastEditorName = (cfg0.editorMapName || "").toLowerCase();
     const maybeRebuild = () => {
       const c2 = scene.mapConfig && scene.mapConfig();
-      const now = ((c2 && c2.editorMapName) || "").toLowerCase();
-      if (now !== scene._imeLastEditorName) {
-        scene._imeLastEditorName = now;
+      if (!c2) return;
+      if (c2.mapId !== scene._imeLastMapId) {
+        // ID‑alapú összehasonlítás
+        scene._imeLastMapId = c2.mapId;
         clearPoiUi();
         removePoiSprites();
         buildPoiSpritesForCurrentMap();
@@ -1058,16 +1063,20 @@
     }
 
     // 1) Régi UI törlése
-    if (scene._poiImgWin) {
-      scene.removeChild(scene._poiImgWin);
-      scene._poiImgWin = null;
-    }
-    if (scene._poiTxtWin) {
-      scene.removeChild(scene._poiTxtWin);
-      scene._poiTxtWin = null;
-    }
-    if (scene._poiMenu && scene._poiMenu.parent) {
-      scene._poiMenu.parent.removeChild(scene._poiMenu);
+    if (!scene._poiMenu) {
+      if (scene._poiImgWin) {
+        scene.removeChild(scene._poiImgWin);
+        scene._poiImgWin = null;
+      }
+      if (scene._poiTxtWin) {
+        scene.removeChild(scene._poiTxtWin);
+        scene._poiTxtWin = null;
+      }
+      // gond, ha itt töröljük a menüt, ezért ezt kitöröljük
+      // if (scene._poiMenu) {
+      //   scene.removeChild(scene._poiMenu);
+      //   scene._poiMenu = null;
+      // }
     }
     scene._poiMenu = null;
 
