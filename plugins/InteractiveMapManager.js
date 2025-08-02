@@ -221,6 +221,40 @@
     }
   });
 
+  safeOnIME("poi-battle", ({ poi }) => {
+    if (!poi || !poi.processBattle) return;
+
+    // 1) "Bat*2 gameover canescape" → tokenek
+    const parts = String(poi.processBattle).trim().split(/\s+/);
+    if (!parts.length) return;
+
+    const troopToken = parts.shift(); // első: csapat neve / ID
+    const flags = parts.map((s) => s.toLowerCase());
+
+    // 2) csapat feloldása név vagy ID alapján
+    let troopId = 0;
+    if (/^\d+$/.test(troopToken)) {
+      troopId = Number(troopToken);
+    } else {
+      const t = $dataTroops.find((tr) => tr && tr.name === troopToken);
+      if (t) troopId = t.id;
+    }
+    if (!troopId || !$dataTroops[troopId]) {
+      console.error("[IM-Manager] Troop not found:", troopToken);
+      if (SoundManager && SoundManager.playBuzzer) {
+        SoundManager.playBuzzer();
+      }
+    }
+
+    // 3) opciók
+    const canEscape = flags.includes("canescape");
+    const canLose = !flags.includes("gameover");
+
+    // 4) harc indítása
+    BattleManager.setup(troopId, canEscape, canLose);
+    SceneManager.push(Scene_Battle);
+  });
+
   safeOnIME("poi-run-common-event", ({ poi, commonEventId }) => {
     // ha nincs átadva, megpróbáljuk a POI-ból
     const id = Number(commonEventId || (poi && poi.callCommonEvent) || 0);

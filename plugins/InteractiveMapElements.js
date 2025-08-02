@@ -24,8 +24,12 @@
  * @default true
  * @desc By default, display the name of the element on the map below its image.
  *
+ * @param ---Portrait window settings---
+ * @desc Portrait window setup
+ * @default ------------------------------
+ *
  * @param portraitTextWindHeight
- * @parent ---Elements GUI---
+ * @parent ---Portrait window settings---
  * @text Portrait Text Window Height
  * @type number
  * @min 120
@@ -33,7 +37,7 @@
  * @desc Portrait text window height (in px) The name and description of the Elements appear here.
  *
  * @param portraitTextWindWidth
- * @parent ---Elements GUI---
+ * @parent ---Portrait window settings---
  * @text Portrait Text Window Width
  * @type number
  * @min 120
@@ -41,7 +45,7 @@
  * @desc The Portrait text window width (in px). The name and description of the Elements appear here.
  *
  * @param portraitImgWinHeight
- * @parent ---Elements GUI---
+ * @parent ---Portrait window settings---
  * @text Portrait Image Window Height
  * @type number
  * @min 120
@@ -49,7 +53,7 @@
  * @desc Portrait img window height (in px). The extra portrait image appears
  *
  * @param portraitImgWinWidth
- * @parent ---Elements GUI---
+ * @parent ---Portrait window settings---
  * @text Portrait Image Window Width
  * @type number
  * @min 120
@@ -57,21 +61,61 @@
  * @desc Portrait img window width (in px). The extra portrait image appears
  *
  * @param portraitWindowSkin
- * @parent ---Elements GUI---
+ * @parent ---Portrait window settings---
  * @text Portrait Window Skin
  * @type file
  * @dir img/system
  * @desc If specified, the portrait window will use this window skin.
  *
+ * @param ---Options window Setup---
+ * @desc Options window setup
+ * @default ------------------------------
+ *
  * @param optionsWindowSkin
- * @parent ---Elements GUI---
+ * @parent ---Options window Setup---
  * @text Options Window Skin
  * @type file
  * @dir img/system
  * @desc If specified, the options menu will use this window skin.
  *
+ * @param ---Fonts Setup---
+ * @desc Font settings
+ * @default ------------------------------
+ *
+ * @param ElementslabelFSize
+ * @parent ---Fonts Setup---
+ * @text Elements label FSize
+ * @type number
+ * @min 1
+ * @default 16
+ * @desc Set your font size
+ *
+ * @param PortraitElementsnameFSize
+ * @parent ---Fonts Setup---
+ * @text Portrait Elements name FSize
+ * @type number
+ * @min 1
+ * @default 16
+ * @desc Set your font size
+ *
+ * @param PortraitDescFSize
+ * @parent ---Fonts Setup---
+ * @text Portrait Desc FSize
+ * @type number
+ * @min 1
+ * @default 14
+ * @desc Set your font size
+ *
+ * @param PortraitBadgeFSize
+ * @parent ---Fonts Setup---
+ * @text Portrait Badge FSize
+ * @type number
+ * @min 1
+ * @default 14
+ * @desc Set your font size
+ *
  * @param optionFontSize
- * @parent ---Elements GUI---
+ * @parent ---Options window Setup---
  * @text Options menu font size
  * @type number
  * @min 1
@@ -127,11 +171,20 @@
  * @default true
  * @desc Should it be visible on the map by default?
  *
+ * @param hidePoiLabel
+ * @text Hide Element Name
+ * @type boolean
+ * @on Yes
+ * @off No
+ * @default false
+ * @desc If you want, you can set it so that the name does not appear on the map. This overrides the global setting.
+ *
  * @param --- Elements GUI ---
  * @desc Elements GUI
  * @default ------------------------------
  *
  * @param iconWidth
+ * @parent --- Elements GUI ---
  * @text Max Element Width (px)
  * @type number
  * @min 0
@@ -139,23 +192,69 @@
  * @desc Enter the size of the item image (Width)
  *
  * @param iconHeight
+ * @parent --- Elements GUI ---
  * @text Max Element Height (px)
  * @type number
  * @min 0
  * @default 96
  * @desc Enter the size of the item image (Height)
  *
+ * @param portraitTextWindHeightNo
+ * @parent --- Elements GUI ---
+ * @text Portrait Text Window Height
+ * @type number
+ * @min 0
+ * @default
+ * @desc Portrait text window height (in px) The name and description of the Elements appear here. Leave empty to use global settings.
+ *
+ * @param portraitTextWindWidthNo
+ * @parent --- Elements GUI ---
+ * @text Portrait Text Window Width
+ * @type number
+ * @min 0
+ * @default
+ * @desc The Portrait text window width (in px). The name and description of the Elements appear here. Leave empty to use global settings.
+ *
+ * @param portraitImgWinHeightNo
+ * @parent --- Elements GUI ---
+ * @text Portrait Image Window Height
+ * @type number
+ * @min 0
+ * @default
+ * @desc Portrait img window height (in px). The extra portrait image appears. Leave empty to use global settings.
+ *
+ * @param portraitImgWinWidthNo
+ * @parent --- Elements GUI ---
+ * @text Portrait Image Window Width
+ * @type number
+ * @min 0
+ * @default
+ * @desc Portrait img window width (in px). The extra portrait image appears. Leave empty to use global settings.
+ *
+ * @param --- Portrait ---
+ * @desc Portrait setup
+ * @default ------------------------------
+ *
  * @param portraitImage
+ * @parent --- Portrait ---
  * @text Portrait Image
  * @type file
  * @dir img/interactivelements
  *
  * @param description
+ * @parent --- Portrait ---
  * @text POI Description
  * @type note
  *
  * @param portraitBadge
+ * @parent --- Portrait ---
  * @text Portrait Badge
+ * @type number
+ * @desc Enter the icon index number; the icon always appears first in the badge.
+ *
+ * @param portraitBadgeIcon
+ * @parent --- Portrait ---
+ * @text Portrait Badge icon
  * @type text
  *
  * @param --- Interact Setup ---
@@ -187,6 +286,7 @@
  * @value processbattle
  * @option Run Common event
  * @value runcommonevent
+ * @desc Don't forget to load the InteractiveMapManager plugin to use interactions!
  *
  * @param relatedMapId
  * @text Related Map ID
@@ -236,7 +336,12 @@
 
   const PORTRAIT_SKIN = P("portraitWindowSkin") || "";
   const OPTIONS_SKIN = P("optionsWindowSkin") || "";
+
   const OPTION_FONT_SIZE = +P("optionFontSize") || 15;
+  const ELEMENTS_LABEL_FONT_SIZE = +P("ElementslabelFSize") || 16;
+  const PORTRAIT_NAME_FONT_SIZE = +P("PortraitElementsnameFSize") || 18;
+  const PORTRAIT_DESC_FONT_SIZE = +P("PortraitDescFSize") || 14;
+  const PORTRAIT_BADGE_FONT_SIZE = +P("PortraitBadgeFSize") || 14;
 
   const LABEL_W = 256;
   const LABEL_H = 24;
@@ -306,7 +411,7 @@
       return { key, label };
     });
     return {
-      id: i, // stabil belső ID
+      id: i,
       mapId: Number(j.mapId) || 0,
       name: j.poiName || "",
       img: j.poiImage || "",
@@ -314,11 +419,24 @@
       y: +j.posY || 0,
       interactable: j.interactable === "true",
       visible: j.initialShow !== "false",
+      hidePoiLabel: j.hidePoiLabel === "true",
       w: +j.iconWidth || 96,
       h: +j.iconHeight || 96,
       portraitImg: j.portraitImage || "",
       portraitDesc: j.description || "",
-      portraitBadge: j.portraitBadge || "",
+      portraitBadgeText: (j.portraitBadge || "").trim(),
+      portraitBadgeIcon: Number(j.portraitBadgeIcon) || 0,
+
+      portraitImgWinWidth:
+        +j.portraitImgWinWidthNo > 0 ? +j.portraitImgWinWidthNo : IMG_WIN_W,
+      portraitImgWinHeight:
+        +j.portraitImgWinHeightNo > 0 ? +j.portraitImgWinHeightNo : IMG_WIN_H,
+      portraitTextWinWidth:
+        +j.portraitTextWindWidthNo > 0 ? +j.portraitTextWindWidthNo : TXT_WIN_W,
+      portraitTextWinHeight:
+        +j.portraitTextWindHeightNo > 0
+          ? +j.portraitTextWindHeightNo
+          : TXT_WIN_H,
 
       interactMode: parseInteractModeRaw(j.interactMode),
       relatedMapId: +j.relatedMapId || 0,
@@ -364,7 +482,7 @@
         try {
           fn(payload);
         } catch (e) {
-          console.error(`[IME] listener err`, e);
+          // console.error([IME] listener err, e);
         }
       });
     },
@@ -416,7 +534,9 @@
     constructor(poi, x, y) {
       super();
       this._poi = poi;
-      Window_Base.prototype.initialize.call(this, x, y, IMG_WIN_W, IMG_WIN_H);
+      const w = poi.portraitImgWinWidth || IMG_WIN_W;
+      const h = poi.portraitImgWinHeight || IMG_WIN_H;
+      Window_Base.prototype.initialize.call(this, x, y, w, h);
       this.opacity = 192;
       applySkin(this, PORTRAIT_SKIN);
       this.refresh();
@@ -435,7 +555,7 @@
       );
       bmp.addLoadListener(() => {
         drawCover(this.contents, bmp);
-        drawBadge(this.contents, this._poi.portraitBadge);
+        drawBadge(this.contents, this._poi);
       });
     }
   }
@@ -449,15 +569,57 @@
       sy = (bmp.height - sh) / 2;
     c.blt(bmp, sx, sy, sw, sh, 0, 0, CW, CH);
   }
-  function drawBadge(c, txt) {
-    if (!txt) return;
+
+  function drawBadge(c, poi) {
     const pad = 5;
-    c.fontSize = 14;
-    const w = c.measureTextWidth(txt),
-      h = c.fontSize + 4;
-    c.fillRect(pad - 2, pad - 2, w + 4, h + 4, "rgba(0,0,0,0.6)");
-    c.textColor = "#fff";
-    c.drawText(txt, pad, pad, w, h, "left");
+    const icon = poi.portraitBadgeIcon || 0;
+    const text = (poi.portraitBadgeText || "").trim();
+
+    const fontSize = PORTRAIT_BADGE_FONT_SIZE;
+    c.fontSize = fontSize;
+    c.textColor = "#ffffff";
+
+    // ikon tényleges mérete = fontSize + 5
+    const iconSize = fontSize + 5;
+    const hasIcon = icon > 0;
+    const hasText = Boolean(text);
+
+    // csak akkor legyen hézag az ikon és szöveg között, ha mindkettő van
+    const between = hasIcon && hasText ? 5 : 0;
+
+    // szöveg szélesség
+    const textWidth = hasText ? c.measureTextWidth(text) : 0;
+
+    // háttér szélessége: ikon + hézag + szöveg
+    const bgW = (hasIcon ? iconSize : 0) + (hasText ? between + textWidth : 0);
+    const bgH = iconSize;
+
+    // plusz padding minden irányba
+    const shapePad = 4;
+    c.fillRect(
+      pad - shapePad,
+      pad - shapePad,
+      bgW + shapePad * 2,
+      bgH + shapePad * 2,
+      "rgba(0,0,0,0.6)"
+    );
+
+    let x = pad;
+    const y = pad;
+
+    if (hasIcon) {
+      const iconSet = ImageManager.loadSystem("IconSet");
+      const tileW = Window_Base._iconWidth;
+      const tileH = Window_Base._iconHeight;
+      const sx = (icon % 16) * tileW;
+      const sy = Math.floor(icon / 16) * tileH;
+      c.blt(iconSet, sx, sy, tileW, tileH, x, y, iconSize, iconSize);
+      x += iconSize + between;
+    }
+
+    if (hasText) {
+      c.drawText(text, x, y, textWidth, bgH, "left");
+    }
   }
 
   // 4.2  Görgethető leírás
@@ -465,7 +627,9 @@
     constructor(poi, x, y) {
       super();
       this._poi = poi;
-      Window_Base.prototype.initialize.call(this, x, y, TXT_WIN_W, TXT_WIN_H);
+      const w = poi.portraitTextWinWidth || TXT_WIN_W;
+      const h = poi.portraitTextWinHeight || TXT_WIN_H;
+      Window_Base.prototype.initialize.call(this, x, y, w, h);
       this.opacity = 192;
       applySkin(this, PORTRAIT_SKIN);
       this._scrollY = 0;
@@ -482,12 +646,12 @@
       let y = 0,
         margin = 4;
 
-      this.contents.fontSize = 18;
+      this.contents.fontSize = PORTRAIT_NAME_FONT_SIZE;
       const nameLH = this.contents.fontSize + 2;
       this.contents.drawText(this._poi.name || "", 0, y, CW, nameLH, "center");
       y += nameLH + margin + 5;
 
-      this.contents.fontSize = 16;
+      this.contents.fontSize = PORTRAIT_DESC_FONT_SIZE;
       const lineH = this.contents.fontSize + 2;
       let desc = (this._poi.portraitDesc || "")
         .replace(/^"(.*)"$/s, "$1")
@@ -699,7 +863,10 @@
         this._icon.buttonMode = true;
       });
 
-      this._label = SHOW_LABEL && poi.name ? this._makeLabel(poi.name) : null;
+      this._label =
+        SHOW_LABEL && poi.name && !poi.hidePoiLabel
+          ? this._makeLabel(poi.name)
+          : null;
       this.anchor.set(0.5, 1.0);
       this.visible = poi.visible;
       win._markerLayer.addChild(this);
@@ -741,7 +908,7 @@
 
     _makeLabel(txt) {
       const bm = new Bitmap(LABEL_W, LABEL_H);
-      bm.fontSize = 18;
+      bm.fontSize = ELEMENTS_LABEL_FONT_SIZE;
       bm.textColor = "#fff";
       bm.outlineColor = "rgba(0,0,0,0.75)";
       bm.outlineWidth = 4;
@@ -886,7 +1053,7 @@
     if (!poi.interactable) return;
 
     if (poi.interactMode === IM.PROCESSBATTLE && poi.processBattle) {
-      _imeStartBattle(poi);
+      IME.emit("poi-battle", { poi });
       return;
     }
 
@@ -915,7 +1082,8 @@
       scene.addChild(scene._poiImgWin);
     }
     if ((mode === IM.PORTRAIT || mode === IM.BOTH) && poi.name) {
-      const yOffset = scene._poiImgWin ? IMG_WIN_H : 0;
+      const imgWinH = poi.portraitImgWinHeight || IMG_WIN_H;
+      const yOffset = scene._poiImgWin ? scene._poiImgWin.height : 0;
       scene._poiTxtWin = new PoiPortraitText(poi, baseX, baseY + yOffset);
       scene.addChild(scene._poiTxtWin);
     }
@@ -993,28 +1161,6 @@
     win.windowskin = ImageManager.loadSystem(skin);
     if (win._refreshAllParts) win._refreshAllParts();
   }
-
-  function _imeStartBattle(poi) {
-    if (!poi || !poi.processBattle) return;
-
-    // formátum: "TroopName [gameover] [canescape]"
-    const parts = poi.processBattle.split(/\s+/);
-    const troopName = parts[0];
-    const flags = parts.slice(1).map((f) => f.toLowerCase());
-
-    const troop = $dataTroops.find((t) => t && t.name === troopName);
-    if (!troop) {
-      console.error(`[IME] processBattle: Troop not found '${troopName}'`);
-      return;
-    }
-    const canEscape = flags.includes("canescape");
-    const canLose = !flags.includes("gameover");
-
-    BattleManager.setup(troop.id, canEscape, canLose);
-    SceneManager.push(Scene_Battle);
-  }
-
-  IME.on("poi-battle", ({ poi }) => _imeStartBattle(poi));
 
   // ——— Plugin Commands: ShowElements / DisableElements ———
   var _Game_Interpreter_pluginCommand =

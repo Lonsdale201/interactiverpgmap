@@ -5,6 +5,19 @@
  * @version 0.90
  *
  * ============================================================================
+ *  Map-specific overrides
+ * ============================================================================
+ *
+ * @param --- MAPS Config ---
+ * @desc ▼ Map configs
+ * @default ------------------------------
+ *
+ * @param maps
+ * @text SETUP YOUR MAPS 
+ * @type struct<MapConfig>[]
+ * @desc Define per-map overrides and images.
+ * 
+ * ============================================================================
  *  --- Map Settings -----------------------------------------------------------
  * ============================================================================
  *
@@ -118,6 +131,13 @@
  * @type file
  * @dir img/system
  * @desc Image used when “Use Custom Player Marker” is On.
+ * 
+ * @param playerMarkerTagLabel
+ * @parent ---Player Marker Settings---
+ * @text Player Tag Label
+ * @type text
+ * @default 
+ * @desc A small text that appears under the player marker, indicating that he is the player.
  *
  * @param defaultMarkerColor
  * @parent ---Player Marker Settings---
@@ -340,19 +360,6 @@
  * @type text
  * @default #FFFFFF
  * @desc Scroll indicators color
- * 
- * ============================================================================
- *  Map-specific overrides
- * ============================================================================
- *
- * @param --- MAPS Config ---
- * @desc ▼ Map configs
- * @default ------------------------------
- *
- * @param maps
- * @text SETUP YOUR MAPS 
- * @type struct<MapConfig>[]
- * @desc Define per-map overrides and images.
  *
  *
  * @help
@@ -385,7 +392,7 @@
  * @desc Enter the short map desciprtion if you want to use it in the top level window (Showdesc)
  *
  * @param namePosition
- * @text Choose the position
+ * @text Map Name position
  * @type select
  * @option Top left
  * @value top-left
@@ -502,6 +509,12 @@
  * @default
  * @desc Only if the selected character is included in the party
  *
+ * @param minPlayerLevel
+ * @text Min Player Level
+ * @type number
+ * @default
+ * @desc only if the player is of equal or higher level. (blank 0 means no level restriction)
+ *
  * @param customMessages
  * @text --- Custom messages ---
  * @default
@@ -525,6 +538,11 @@
  * @text If the set character is not in the party
  * @type text
  * @default The required character is not in the party.
+ *
+ * @param custompleveloff
+ * @text if the player has not reached the level requirement
+ * @type text
+ * @default You're not at the level where you can look at the map yet.
  */
 
 (() => {
@@ -552,6 +570,7 @@
   const DEFAULT_MARKER_SHAPE = P("defaultMarkerShape") || "circle";
   const DEFAULT_MARKER_SIZE = Number(P("defaultMarkerSize") || 12);
   const MARKER_PULSE = P("markerPulse") === "true";
+  const PLAYER_MARKER_TAG = (P("playerMarkerTagLabel") || "").trim();
 
   const UNDERLAY_IMG = P("letterboxUnderlayImage") || "";
   const UNDERLAY_BMP = UNDERLAY_IMG
@@ -703,6 +722,12 @@
       if (!hasActor) return false;
     }
 
+    const minLvl = Number(cfg.minPlayerLevel || 0);
+    if (minLvl > 0) {
+      const leader = $gameParty.leader();
+      if (!leader || leader.level < minLvl) return false;
+    }
+
     const itemId = Number(cfg.requireItem || 0);
     const skillId = Number(cfg.requireSkill || 0);
     const switchId = Number(cfg.requireSwitch || 0);
@@ -735,6 +760,14 @@
         .some((m) => m.actorId() === actorId);
       if (!hasActor) {
         return cfg.customactoroff || "";
+      }
+    }
+
+    const minLvl = Number(cfg.minPlayerLevel || 0);
+    if (minLvl > 0) {
+      const leader = $gameParty.leader();
+      if (!leader || leader.level < minLvl) {
+        return cfg.custompleveloff || "";
       }
     }
 
@@ -990,6 +1023,29 @@
       markerBmp._setDirty();
     }
     this._playerDot = new Sprite(markerBmp);
+    this._playerLabel = null;
+    if (PLAYER_MARKER_TAG) {
+      const fs = 14; // betűméret
+      const pad = 2; // kis oldalpuffer
+      const tmp = new Bitmap(1, 1);
+      tmp.fontSize = fs;
+      const w = tmp.measureTextWidth(PLAYER_MARKER_TAG) + pad * 2;
+      const h = fs + 4;
+
+      const bmp = new Bitmap(w, h);
+      bmp.fontSize = fs;
+      bmp.textColor = "#FFFFFF";
+      bmp.outlineColor = "rgba(0,0,0,0.5)";
+      bmp.outlineWidth = 3;
+      bmp.drawText(PLAYER_MARKER_TAG, 0, 0, w, h, "center");
+
+      const tag = new Sprite(bmp);
+      tag.anchor.set(0.5, 0); // közép-felső
+      tag.visible = false; // majd update-ben
+      this._markerLayer.addChild(tag);
+
+      this._playerLabel = tag;
+    }
     this._playerDot.anchor.set(0.5);
     this._playerDot.visible = false;
     this._markerLayer.addChild(this._playerDot);
@@ -1262,6 +1318,7 @@
     const cfg = findCfg();
     if (!shouldTrack(cfg)) {
       this._playerDot.visible = false;
+      if (this._playerLabel) this._playerLabel.visible = false;
       return;
     }
     if (!this._bmp) return;
@@ -1278,11 +1335,9 @@
     this._playerDot.x = Math.round(this._drawDX + relX * s);
     this._playerDot.y = Math.round(this._drawDY + relY * s);
 
-    // Háromszög forgatása a játékos face irányába
     if (!USE_CUSTOM_MARKER && DEFAULT_MARKER_SHAPE === "triangle") {
       const dir = $gamePlayer.direction();
       let angle = 0;
-      // 8 = fel, 6 = jobb, 2 = le, 4 = bal
       if (dir === 8) angle = 0;
       else if (dir === 6) angle = Math.PI / 2;
       else if (dir === 2) angle = Math.PI;
@@ -1292,13 +1347,32 @@
       this._playerDot.rotation = 0;
     }
 
-    // Pulsálás (opacity) ha be van kapcsolva
     if (MARKER_PULSE) {
       const t = (Date.now() / 1000) * Math.PI * 2;
       this._playerDot.opacity =
         160 + Math.round(95 * (0.5 + 0.5 * Math.sin(t)));
     } else {
       this._playerDot.opacity = 255;
+    }
+    if (this._playerLabel) {
+      const lbl = this._playerLabel;
+      if (this._playerDot.visible) {
+        const offY = (this._playerDot.height * this._playerDot.scale.y) / 2 + 4;
+        const dir =
+          !USE_CUSTOM_MARKER && DEFAULT_MARKER_SHAPE === "triangle"
+            ? $gamePlayer.direction()
+            : null;
+        lbl.visible = true;
+        lbl.x = this._playerDot.x;
+        if (dir === 2) {
+          lbl.y = this._playerDot.y - offY - lbl.height;
+        } else {
+          lbl.y = this._playerDot.y + offY;
+        }
+        lbl.opacity = 255;
+      } else {
+        lbl.visible = false;
+      }
     }
   };
 
@@ -2216,9 +2290,28 @@
           // új villogás (ha kérte)
           if (hit.blink) this._startBlink(hit);
         } else {
-          // üres helyre kattintottak
-          IRMap.emit("empty-click");
-          this._stopBlink();
+          // üres helyre kattintottak → de előbb ellenőrizzük, hogy nem a portréablakokra kattintottunk-e
+          const sc = IRMap.currentScene && IRMap.currentScene();
+          let keepFocus = false;
+          if (sc) {
+            const px = TouchInput.x;
+            const py = TouchInput.y;
+            // ha nyitva vannak a portréablakok, gyűjtsük össze
+            const wins = [sc._poiImgWin, sc._poiTxtWin].filter((w) => w);
+            // ha a koordináta bármelyiken belül van, ne deselect-eljünk
+            keepFocus = wins.some(
+              (w) =>
+                px >= w.x &&
+                px < w.x + w.width &&
+                py >= w.y &&
+                py < w.y + w.height
+            );
+          }
+          if (!keepFocus) {
+            // csak akkor dobd az empty-click-et, ha nem portré ablakra kattintottunk
+            IRMap.emit("empty-click");
+            this._stopBlink();
+          }
         }
       }
 
@@ -2232,7 +2325,7 @@
         const a0 = this.active.baseAlpha;
 
         // csak 40–100% között villogjon
-        const min = 0.4;
+        const min = 0.75;
         const max = 1.0;
         const amp = max - min; // 0.6
 
