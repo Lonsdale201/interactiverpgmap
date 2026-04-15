@@ -36,6 +36,7 @@
  * @text Fallback Map Image
  * @type file
  * @dir img/maps
+ * @require 1
  * @desc Shown when the current map has no configured map image.
  *
  * @param fallbackHandler
@@ -64,6 +65,7 @@
  * @text Open map Sound
  * @type file
  * @dir audio/se
+ * @require 1
  * @desc Sound effect to play when the map opens.
  *
  * @param closeSound
@@ -71,6 +73,7 @@
  * @text Close map Sound
  * @type file
  * @dir audio/se
+ * @require 1
  * @desc Sound effect to play when the map closed.
  *
  * @param imagePixelsPerTile
@@ -130,6 +133,7 @@
  * @text Custom Player Marker Image
  * @type file
  * @dir img/system
+ * @require 1
  * @desc Image used when “Use Custom Player Marker” is On.
  * 
  * @param playerMarkerTagLabel
@@ -204,6 +208,7 @@
  * @text Map-only Window Skin
  * @type file
  * @dir img/system
+ * @require 1
  * @desc Ha be van állítva, csak a térkép-ablak ezt a skinsheetet használja.
  * 
  * @param letterboxUnderlayImage
@@ -211,6 +216,7 @@
  * @text Letterbox Underlay Image
  * @type file
  * @dir img/system
+ * @require 1
  * @desc Csak globális. Contain/NoUpscale módban, windowos nézetnél a térkép ALATT kirajzolt háttérréteg (a letterbox sávokba).
 
  *
@@ -219,6 +225,7 @@
  * @text Frame Image
  * @type file
  * @dir img/system
+ * @require 1
  *
  * @param customFramePad
  * @parent ---Map Window Design---
@@ -289,6 +296,7 @@
  * @text Custom window skin (img/system)
  * @type file
  * @dir img/system
+ * @require 1
  *
  * @param topLevelHeight
  * @parent ---Top level Window---
@@ -324,8 +332,8 @@
  * @parent ---Top level Window---
  * @text Top level elements
  * @type text[]
- * @default ["showmap"]
- * @desc Supported commands: showmap showbreadcumb showselected read more about this function  on github
+ * @default ["showmapname"]
+ * @desc Supported commands: showmapname showbreadcumb showselected read more about this function  on github
  * 
  *
  * ============================================================================
@@ -379,6 +387,7 @@
  * @text Fullscreen Map Image
  * @type file
  * @dir img/maps
+ * @require 1
  * @desc Add the map image. If it does not exist, create the maps folder within the IMG folder!
  *
  * @param MapName
@@ -389,7 +398,15 @@
  * @param Mapdesc
  * @text Map Description
  * @type text
- * @desc Enter the short map desciprtion if you want to use it in the top level window (Showdesc)
+ * @desc Enter the short map desciprtion if you want to use it in the top level window (Showdesc), or in the Mapnotes
+ *
+ * @param hiddenMap
+ * @text This map is hidden
+ * @type boolean
+ * @on On
+ * @off Off
+ * @default false
+ * @desc Set true if you dont want to show this map in the Map Note system
  *
  * @param namePosition
  * @text Map Name position
@@ -424,6 +441,7 @@
  * @text Custom Map Name As Img
  * @type file
  * @dir img/maplabels
+ * @require 1
  * @desc Same thing like Current Map name, but instead of plain text, you can display it as an image.
  *
  * @param mapNameImgScale
@@ -515,6 +533,14 @@
  * @default
  * @desc only if the player is of equal or higher level. (blank 0 means no level restriction)
  *
+ * @param requireVisitedOnce
+ * @text Require Previously Visited
+ * @type boolean
+ * @on On
+ * @off Off
+ * @default false
+ * @desc If On, the map can be opened only if the player has visited this map at least once (uses Gamemory plugin if available).
+ *
  * @param customMessages
  * @text --- Custom messages ---
  * @default
@@ -543,6 +569,30 @@
  * @text if the player has not reached the level requirement
  * @type text
  * @default You're not at the level where you can look at the map yet.
+ *
+ * @param customNotVisitedYet
+ * @text If not visited yet
+ * @type text
+ * @default You haven't discovered this area yet.
+ * @desc Message to show if 'Require Previously Visited' is On but the player hasn't visited this map yet.
+ *
+ * @param Notes settings
+ * @text --- Notes settings ---
+ * @default
+ *
+ * @param MapNoteImg
+ * @text Map note img
+ * @type file
+ * @dir img/maps
+ * @require 1
+ * @desc this profile image will display in the Notes menu
+ *
+ * @param Info
+ * @text Info (Notes)
+ * @type note
+ * @default
+ * @desc Short info under the map name in the Notes menu. Keep it brief – not scrollable.
+ *
  */
 
 (() => {
@@ -594,17 +644,6 @@
   );
   const TL_JUSTIFY = (P("topLevelJustify") || "center").toLowerCase();
 
-  function effScaleMode(cfg) {
-    // Map override -> ha üres, akkor a globális érvényesül
-    const m =
-      (cfg &&
-        String(cfg.scaleMode || "")
-          .trim()
-          .toLowerCase()) ||
-      GLOBAL_SCALE_MODE;
-    return m || "cover";
-  }
-
   const WINDOW_DESIGN = P("windowDesign"); // "default" | "none" | "customwindow"
   const MAP_WINDOW_SKIN = P("customMapWindowSkin") || "";
   const CUSTOM_FRAME_IMAGE = P("customFrameImage") || "";
@@ -614,15 +653,112 @@
   const CUSTOM_FRAME_OFF_X = Number(P("customFrameOffsetX") || 0);
   const CUSTOM_FRAME_OFF_Y = Number(P("customFrameOffsetY") || 0);
 
+  const GLOBAL_TRACK = P("enablePlayerTracking") === "true";
+
   const MAP_CFGS_RAW = JSON.parse(P("maps") || "[]");
   const MAP_CFGS = MAP_CFGS_RAW.map((e) => {
     const cfg = JSON.parse(e);
     cfg.mapDisplayName = cfg.MapName || "";
     cfg.mapDescription = cfg.Mapdesc || "";
+    cfg.mapNoteImage = (cfg.MapNoteImg || "").trim();
+    cfg.mapNoteInfo = (cfg.Info || "").trim();
+    cfg.mapHidden = String(cfg.hiddenMap || "false").toLowerCase() === "true";
     return cfg;
   });
 
-  const GLOBAL_TRACK = P("enablePlayerTracking") === "true";
+  // ---------------------------------------------------------------------------
+  // IRMConfig – központosított param/map-config szerviz
+  //   - a szétszórt effScaleMode, pptFor, findCfg... logikákat ide költöztetjük
+  //   - semmit nem változtat a viselkedésen, csak egységes belépőpontot ad
+  // ---------------------------------------------------------------------------
+  const IRMConfig = (() => {
+    // belső segéd: ID → cfg (ha nincs id alapú match, akkor editorMapName fallback)
+    function _findCfgForMapId(mapId) {
+      const byId = MAP_CFGS.find((c) => Number(c.mapId) === mapId);
+      if (byId) return byId;
+      const info = $dataMapInfos[mapId];
+      if (!info) return null;
+      return MAP_CFGS.find((c) => c.editorMapName === info.name) || null;
+    }
+
+    // aktív map config (kényelmi)
+    function _mapCfg() {
+      return _findCfgForMapId($gameMap.mapId());
+    }
+
+    // effektív scaleMode (map override > global)
+    function _effScaleMode(cfg) {
+      const m =
+        (cfg &&
+          String(cfg.scaleMode || "")
+            .trim()
+            .toLowerCase()) ||
+        GLOBAL_SCALE_MODE;
+      return m || "cover";
+    }
+
+    // effektív Pixels Per Tile (map override > global > auto)
+    function _pixelsPerTile(cfg) {
+      const m = Number((cfg && cfg.pixelsPerTile) || 0);
+      if (m > 0) return m;
+      if (GLOBAL_PPT > 0) return GLOBAL_PPT;
+      return 0;
+    }
+
+    // player tracking (map override > global)
+    function _shouldTrack(cfgOrMapId) {
+      let cfg = cfgOrMapId;
+      if (typeof cfgOrMapId === "number") {
+        cfg = _findCfgForMapId(cfgOrMapId);
+      } else if (!cfgOrMapId) {
+        cfg = _mapCfg();
+      }
+      if (cfg && cfg.enablePlayerTracking != null) {
+        return String(cfg.enablePlayerTracking) === "true";
+      }
+      return GLOBAL_TRACK;
+    }
+
+    // No-map / fallback helper-ek – jelenleg a globálékra támaszkodunk,
+    // csak egységes getter/setter kell, hogy később könnyű legyen mozgatni.
+    function _textNoMap() {
+      return TEXT_NO_MAP;
+    }
+    function _setTextNoMap(s) {
+      TEXT_NO_MAP = String(s || "");
+    }
+    function _fallbackImg() {
+      return FALLBACK_IMG;
+    }
+    function _setFallbackImg(f) {
+      FALLBACK_IMG = String(f || "");
+    }
+    function _enableFallback() {
+      return ENABLE_FALLBACK;
+    }
+
+    return {
+      // nyers paramok és feldolgozott map list
+      params,
+      MAP_CFGS,
+
+      // map cfg elérés
+      findCfgForMapId: _findCfgForMapId,
+      mapCfg: _mapCfg,
+
+      // effektív értékek
+      effScaleMode: _effScaleMode,
+      pixelsPerTile: _pixelsPerTile,
+      shouldTrack: _shouldTrack,
+
+      // fallback/no-map hozzáférések
+      textNoMap: _textNoMap,
+      setTextNoMap: _setTextNoMap,
+      fallbackImage: _fallbackImg,
+      setFallbackImage: _setFallbackImg,
+      enableFallback: _enableFallback,
+    };
+  })();
 
   const MAP_KEY = "interactiveMap";
 
@@ -658,25 +794,6 @@
   function curMapName() {
     const info = $dataMapInfos[$gameMap.mapId()];
     return info ? info.name : "";
-  }
-  function findCfgForMapId(mapId) {
-    // elsődlegesen próbáljuk meg közvetlenül az ID-t
-    const byId = MAP_CFGS.find((c) => Number(c.mapId) === mapId);
-    if (byId) return byId;
-
-    // ha nincs ID-alapú config, akkor visszatérünk a régi név-alapú kereséssel
-    const info = $dataMapInfos[mapId];
-    if (!info) return null;
-    return MAP_CFGS.find((c) => c.editorMapName === info.name) || null;
-  }
-  function findCfg() {
-    return findCfgForMapId($gameMap.mapId());
-  }
-  function pptFor(cfg) {
-    const m = Number((cfg && cfg.pixelsPerTile) || 0);
-    if (m > 0) return m;
-    if (GLOBAL_PPT > 0) return GLOBAL_PPT;
-    return 0;
   }
 
   function loadMapJson(mapId) {
@@ -714,6 +831,16 @@
     return null;
   }
 
+  function resolveMapIdToken(token) {
+    if (!token) return 0;
+    const t = String(token).trim();
+    const m = t.match(/^#?(\d+)$/);
+    if (m) return Number(m[1]);
+    return window.IRMap && IRMap.findMapIdByEditorName
+      ? IRMap.findMapIdByEditorName(t) || 0
+      : 0;
+  }
+
   /**
    * Returns true if no requirement is set, or if **any** one of the three
    * requirements is fulfilled (OR-reláció).
@@ -740,6 +867,30 @@
     const skillId = Number(cfg.requireSkill || 0);
     const switchId = Number(cfg.requireSwitch || 0);
 
+    // NEW: „Require Previously Visited” (Gamemory fallback-aware)
+    const requireVisited =
+      String(cfg.requireVisitedOnce || "false").toLowerCase() === "true";
+    if (requireVisited) {
+      const hasMemory =
+        window.Gamemory && typeof Gamemory.hasVisited === "function";
+      if (hasMemory) {
+        const mapIdToCheck = Number(cfg.mapId || 0) || $gameMap.mapId();
+        const ever = !!Gamemory.hasVisited(mapIdToCheck);
+        if (!ever) {
+          // fejlesztői log a konzolba a könnyebb teszteléshez
+          console.log(
+            `[IRMap] requireVisitedOnce → blocked (map #${mapIdToCheck}).`
+          );
+          return false;
+        }
+      } else {
+        // Gamemory nincs betöltve → feltétel skippelve
+        console.log(
+          "[IRMap] requireVisitedOnce set, but Gamemory not found → skipping condition."
+        );
+      }
+    }
+
     // ha nincs egyéb követelmény ⇒ OK
     const anyReq = itemId > 0 || skillId > 0 || switchId > 0;
     if (!anyReq) return true;
@@ -760,25 +911,38 @@
   function getOpenInteractiveMapFailureMessage(cfg) {
     if (!cfg) return "";
 
-    // ─── actorInParty hibaüzenet ─────────────────────────────────────
+    // Actor in party check
     const actorId = Number(cfg.actorInParty || 0);
     if (actorId > 0) {
       const hasActor = $gameParty
         .members()
         .some((m) => m.actorId() === actorId);
-      if (!hasActor) {
-        return cfg.customactoroff || "";
-      }
+      if (!hasActor) return cfg.customactoroff || "";
     }
 
+    // Min level check
     const minLvl = Number(cfg.minPlayerLevel || 0);
     if (minLvl > 0) {
       const leader = $gameParty.leader();
-      if (!leader || leader.level < minLvl) {
-        return cfg.custompleveloff || "";
-      }
+      if (!leader || leader.level < minLvl) return cfg.custompleveloff || "";
     }
 
+    // NEW: visited-once gate (csak ha Gamemory elérhető)
+    const requireVisited =
+      String(cfg.requireVisitedOnce || "false").toLowerCase() === "true";
+    if (requireVisited) {
+      const hasMemory =
+        window.Gamemory && typeof Gamemory.hasVisited === "function";
+      if (hasMemory) {
+        const mapIdToCheck = Number(cfg.mapId || 0) || $gameMap.mapId();
+        if (!Gamemory.hasVisited(mapIdToCheck)) {
+          return cfg.customNotVisitedYet || "";
+        }
+      }
+      // ha nincs Gamemory, nincs tiltás, nincs üzenet → továbblépünk
+    }
+
+    // Item / Skill / Switch (OR-csoport)
     const itemId = Number(cfg.requireItem || 0);
     const skillId = Number(cfg.requireSkill || 0);
     const switchId = Number(cfg.requireSwitch || 0);
@@ -820,7 +984,7 @@
     if (!usableW) usableW = iw - offX;
     if (!usableH) usableH = ih - offY;
 
-    const ppt = pptFor(cfg);
+    const ppt = IRMConfig.pixelsPerTile(cfg);
     let scaleX, scaleY;
 
     if (ppt > 0) {
@@ -920,6 +1084,76 @@
     return bmp;
   }
   const ARROW_BMP = makeArrowBitmap();
+
+  // ===========================================================================
+  // Scene_FallbackMap – egyszerű helykitöltő fallback nézet
+  //   - Ha van FALLBACK_IMG: képet mutat (contain), különben TEXT_NO_MAP szöveget
+  //   - Cancel / Map hotkey: bezár
+  // ===========================================================================
+  function Scene_FallbackMap() {
+    this.initialize.apply(this, arguments);
+  }
+  Scene_FallbackMap.prototype = Object.create(Scene_MenuBase.prototype);
+  Scene_FallbackMap.prototype.constructor = Scene_FallbackMap;
+
+  Scene_FallbackMap.prototype.initialize = function () {
+    Scene_MenuBase.prototype.initialize.call(this);
+  };
+
+  Scene_FallbackMap.prototype.create = function () {
+    Scene_MenuBase.prototype.create.call(this);
+    const w = Math.floor(Graphics.boxWidth * 0.75);
+    const h = Math.floor(Graphics.boxHeight * 0.75);
+    const x = (Graphics.boxWidth - w) / 2;
+    const y = (Graphics.boxHeight - h) / 2;
+
+    this._win = new Window_Base(x, y, w, h);
+    this.addWindow(this._win);
+
+    if (IRMConfig.fallbackImage()) {
+      const bmp = ImageManager.loadBitmap(
+        "img/maps/",
+        IRMConfig.fallbackImage(),
+        0,
+        true
+      );
+      const sp = new Sprite(bmp);
+      sp.anchor.set(0.5, 0.5);
+      sp.x = this._win.x + this._win.width / 2;
+      sp.y = this._win.y + this._win.height / 2;
+      bmp.addLoadListener(() => {
+        // contain skálázás az ablak belső tartalmára
+        const cw = this._win.contentsWidth();
+        const ch = this._win.contentsHeight();
+        const scale = Math.min(
+          cw / Math.max(1, bmp.width),
+          ch / Math.max(1, bmp.height)
+        );
+        sp.scale.set(scale, scale);
+      });
+      this.addChild(sp);
+    } else {
+      const text = Window_Base.prototype.convertEscapeCharacters.call(
+        this,
+        IRMConfig.textNoMap() || "No map available."
+      );
+      const lh = this._win.lineHeight();
+      this._win.drawText(
+        IRMConfig.textNoMap(),
+        0,
+        (this._win.contentsHeight() - lh) / 2,
+        this._win.contentsWidth(),
+        "center"
+      );
+    }
+  };
+
+  Scene_FallbackMap.prototype.update = function () {
+    Scene_MenuBase.prototype.update.call(this);
+    if (Input.isTriggered("cancel") || Input.isTriggered(MAP_KEY)) {
+      SceneManager.pop();
+    }
+  };
 
   // ────────────────────────────────────────────────────────────────────────────
   // 1) In-menu handler hookup (Scene_Menu) – színezés és ikon escape-ekkel
@@ -1082,64 +1316,196 @@
    * Window_TopLevel
    *   – csak felirat(ok); szélessége a map‑ablakéval egyezik
    * ===================================================================*/
+  /* =====================================================================
+   * Window_TopLevel – egyetlen ablak, szöveg + "gombok" MV-s kurzorral
+   * ===================================================================*/
   function Window_TopLevel() {
     this.initialize(...arguments);
   }
-  Window_TopLevel.prototype = Object.create(Window_Base.prototype);
+  Window_TopLevel.prototype = Object.create(Window_Selectable.prototype);
   Window_TopLevel.prototype.constructor = Window_TopLevel;
 
   Window_TopLevel.prototype.initialize = function (x, y, w, h, skinMode) {
-    Window_Base.prototype.initialize.call(this, x, y, w, h);
-
+    this._buttons = []; // [{text,mapId,enabled}]
+    this._btnRects = []; // tartalom-koordináták (contents space)
+    this._tokens = []; // vegyes: {kind:'text'|'button', w, text, idx?}
+    Window_Selectable.prototype.initialize.call(this, x, y, w, h);
     if (skinMode === "customwindow" && TL_CUSTOM_SKIN) {
       this.windowskin = ImageManager.loadSystem(TL_CUSTOM_SKIN);
-    } else if (skinMode === "default") {
-    } else if (skinMode === "same") {
-      // később Scene tölti be ugyan‑azt a sheetet mint a map‑ablak
     }
-    this.refresh(""); // üres kezdés
+    this.deactivate();
+    this.select(-1);
+    this.refresh([], []);
   };
 
   Window_TopLevel.prototype.standardFontSize = function () {
     return TL_FONT_SIZE;
   };
+  Window_TopLevel.prototype.maxItems = function () {
+    return this._buttons.length;
+  };
+  // Nem használjuk az alap rácsot: visszaadjuk az előre kiszámolt téglalapot
+  Window_TopLevel.prototype.itemRect = function (index) {
+    const r = this._btnRects[index];
+    if (!r) return new Rectangle(0, 0, 0, 0);
+    return new Rectangle(r.x, r.y, r.w, r.h);
+  };
+  // A kurzor a precomputed téglalapra áll
+  Window_TopLevel.prototype.updateCursor = function () {
+    const i = this.index();
+    if (i >= 0 && this._btnRects[i]) {
+      const r = this._btnRects[i];
+      this.setCursorRect(r.x, r.y, r.w, r.h);
+    } else {
+      this.setCursorRect(0, 0, 0, 0);
+    }
+  };
+  // Egérrel: rámutatás kiválaszt, kattintás OK
+  Window_TopLevel.prototype.processTouch = function () {
+    if (!this.isOpenAndActive())
+      return Window_Selectable.prototype.processTouch.call(this);
+    if (TouchInput.isTriggered()) {
+      const lx = TouchInput.x - this.x - this.padding;
+      const ly = TouchInput.y - this.y - this.padding;
+      const hit = this._btnRects.findIndex(
+        (r) => lx >= r.x && lx < r.x + r.w && ly >= r.y && ly < r.y + r.h
+      );
+      if (hit >= 0) {
+        this.select(hit);
+        this.processOk();
+        return;
+      }
+    }
+    Window_Selectable.prototype.processTouch.call(this);
+  };
+  // Enter/OK: váltás a kiválasztott gomb mapId-jára
+  Window_TopLevel.prototype.processOk = function () {
+    const i = this.index();
+    if (i < 0) return;
+    const b = this._buttons[i];
+    if (!b || b.enabled === false) {
+      SoundManager && SoundManager.playBuzzer && SoundManager.playBuzzer();
+      return;
+    }
+    this._triggerShowMap(b.mapId);
+  };
+  // bal/jobb nyíl: egy sor, folytonos
+  Window_TopLevel.prototype.cursorRight = function () {
+    if (!this._buttons.length) return;
+    const i = this.index();
+    this.select((i + 1) % this._buttons.length);
+  };
+  Window_TopLevel.prototype.cursorLeft = function () {
+    if (!this._buttons.length) return;
+    const i = this.index();
+    this.select((i - 1 + this._buttons.length) % this._buttons.length);
+  };
 
-  /** Csak egyszerű szöveg‑kirajzolás */
-  Window_TopLevel.prototype.refresh = function (items) {
+  Window_TopLevel.prototype.refresh = function (pieces, buttons) {
     this.contents.clear();
-    if (!Array.isArray(items) || !items.length) return;
+    this._buttons = Array.isArray(buttons) ? buttons.slice() : [];
+    this._btnRects = [];
+    this._tokens = [];
 
-    const gapBase = 16; // gapp
-    this.contents.fontSize = TL_FONT_SIZE;
-    const lineH = this.lineHeight();
-    const widths = items.map((t) => this.textWidth(t));
-    const totalW = widths.reduce((a, b) => a + b, 0);
+    // --- 1) tokenizálás: szövegek + gombok egy sorban -----------------
+    pieces = Array.isArray(pieces) ? pieces : [];
+    const PADX_BTN = 8; // gomb belső vízszintes padding
+    const GAP = 16; // alaprés a tokenek között
     const cw = this.contentsWidth();
-    let gaps = gapBase;
-    let x0;
+    const ch = this.contentsHeight();
+    const lineH = this.lineHeight();
+    this.contents.fontSize = TL_FONT_SIZE;
 
-    switch (TL_JUSTIFY) {
-      case "start":
-        x0 = 0;
-        break;
-      case "end":
-        x0 = cw - (totalW + gapBase * (items.length - 1));
-        break;
-      case "spacebetween":
-        x0 = 0;
-        gaps = items.length > 1 ? (cw - totalW) / (items.length - 1) : 0;
-        break;
-      case "center":
-      default:
-        x0 = (cw - (totalW + gapBase * (items.length - 1))) / 2;
-        break;
+    // szöveg tokenek
+    for (const t of pieces) {
+      const w = this.textWidth(String(t || ""));
+      this._tokens.push({ kind: "text", text: String(t || ""), w });
+    }
+    // gomb tokenek
+    for (let i = 0; i < this._buttons.length; i++) {
+      const b = this._buttons[i];
+      const tw = this.textWidth(String(b.text || ""));
+      const w = tw + PADX_BTN * 2;
+      this._tokens.push({
+        kind: "button",
+        text: String(b.text || ""),
+        w,
+        idx: i,
+      });
     }
 
-    let x = Math.max(0, Math.round(x0));
-    const y = Math.round((this.contentsHeight() - lineH) / 2);
-    for (let i = 0; i < items.length; i++) {
-      this.drawText(items[i], x, y, widths[i], "left");
-      x += widths[i] + gaps;
+    // semmi rajzolnivaló?
+    if (!this._tokens.length) {
+      this.select(-1);
+      this.deactivate();
+      return;
+    }
+
+    // --- 2) teljes szélesség + igazítás kiszámítása --------------------
+    const totalContentW = this._tokens.reduce((a, t) => a + t.w, 0);
+    let gaps = GAP;
+    let startX;
+
+    if (
+      TL_JUSTIFY === "spacebetween" &&
+      this._tokens.length > 1 &&
+      cw > totalContentW
+    ) {
+      gaps = (cw - totalContentW) / (this._tokens.length - 1);
+      startX = 0;
+    } else if (TL_JUSTIFY === "end") {
+      startX = Math.max(
+        0,
+        cw - (totalContentW + GAP * (this._tokens.length - 1))
+      );
+    } else if (TL_JUSTIFY === "center") {
+      startX = Math.max(
+        0,
+        Math.floor((cw - (totalContentW + GAP * (this._tokens.length - 1))) / 2)
+      );
+    } else {
+      startX = 0; // start
+    }
+
+    // --- 3) rajzolás + gomb téglalapok eltárolása ----------------------
+    const y = Math.round((ch - lineH) / 2);
+    let x = startX;
+
+    for (const t of this._tokens) {
+      if (t.kind === "text") {
+        this.drawText(t.text, x, y, t.w, "left");
+      } else {
+        // NINCS fehér háttér, csak szöveg; MV kurzor fogja jelezni a fókuszt
+        const btn = this._buttons[t.idx];
+        this.changePaintOpacity(btn.enabled !== false);
+        this.drawText(t.text, x, y, t.w, "center");
+        this.changePaintOpacity(true);
+        // katt/kurzor zóna (contents koordináta)
+        this._btnRects[t.idx] = { x: x, y: y, w: t.w, h: lineH };
+      }
+      x += t.w + gaps;
+    }
+
+    // --- 4) input állapot ------------------------------------------------
+    if (this._buttons.length) {
+      // ha volt előző index, megtartjuk, különben 0
+      if (this.index() < 0 || this.index() >= this._buttons.length)
+        this.select(0);
+      this.activate();
+    } else {
+      this.select(-1);
+      this.deactivate();
+    }
+  };
+
+  // marad
+  Window_TopLevel.prototype._triggerShowMap = function (mapId) {
+    if (window.IME && typeof IME.emit === "function") {
+      IME.emit("poi-open-related", { mapId });
+      return;
+    }
+    if (window.IRMap && typeof IRMap.switchToMapById === "function") {
+      IRMap.switchToMapById(mapId);
     }
   };
 
@@ -1322,18 +1688,12 @@
     }
   };
 
-  function shouldTrack(cfg) {
-    if (cfg && cfg.enablePlayerTracking != null) {
-      return String(cfg.enablePlayerTracking) === "true";
-    }
-    return GLOBAL_TRACK;
-  }
   // ────────────────────────────────────────────────────────────────────────────
   // Update the player marker’s position, rotation (if triangle), and pulse opacity
   // ────────────────────────────────────────────────────────────────────────────
   Window_InteractiveMap.prototype.updatePlayerMarker = function (imgX, imgY) {
-    const cfg = findCfg();
-    if (!shouldTrack(cfg)) {
+    const cfg = IRMConfig.mapCfg();
+    if (!IRMConfig.shouldTrack(cfg)) {
       this._playerDot.visible = false;
       if (this._playerLabel) this._playerLabel.visible = false;
       return;
@@ -1432,6 +1792,55 @@
     return this._bmp;
   };
 
+  // MV-s, vízszintes parancsablak a top-level gombokhoz
+  // class Window_TopOpenMap extends Window_HorzCommand {
+  //   constructor(x, y, w, items, topSkin) {
+  //     super(x, y); // windowWidth itt már hívódik
+  //     this._items = Array.isArray(items) ? items.slice() : [];
+  //     this._w = w;
+
+  //     if (topSkin) {
+  //       this.windowskin = topSkin;
+  //       this._refreshAllParts && this._refreshAllParts();
+  //     }
+
+  //     // >>> FONTOS: utólag állítsuk be a valódi szélességet
+  //     this.width = this.windowWidth();
+  //     this.createContents();
+
+  //     this.refresh();
+  //     const first = this._items.findIndex((it) => it.enabled !== false);
+  //     this.select(first >= 0 ? first : 0);
+  //     this.activate();
+  //     this.open();
+
+  //     console.log("[IRM] TopCmd ready", {
+  //       x: this.x,
+  //       y: this.y,
+  //       w: this.width,
+  //       h: this.height,
+  //       items: this._items,
+  //     });
+  //   }
+  //   windowWidth() {
+  //     return this._w || 240;
+  //   } // fallback, ha még nincs _w
+  //   maxCols() {
+  //     return Math.max(1, (this._items && this._items.length) || 1);
+  //   }
+  //   standardFontSize() {
+  //     return TL_FONT_SIZE;
+  //   }
+  //   makeCommandList() {
+  //     const list = Array.isArray(this._items) ? this._items : [];
+  //     console.log("[IRM] makeCommandList in", list);
+  //     for (const it of list) {
+  //       this.addCommand(it.text, "openmap", it.enabled !== false, it.mapId);
+  //     }
+  //   }
+  //   processCursorMove() {}
+  // }
+
   // ===========================================================================
   // Scene_InteractiveMap
   // ===========================================================================
@@ -1469,7 +1878,7 @@
     const winH = Math.floor((Graphics.boxHeight * MAP_WIN_H_PCT) / 100);
     const winX = (Graphics.boxWidth - winW) / 2;
     const winY = (Graphics.boxHeight - winH) / 2;
-    this._cfg = findCfg();
+    this._cfg = IRMConfig.mapCfg();
 
     // create and add the map window
     this._win = new Window_InteractiveMap(
@@ -1562,7 +1971,7 @@
     bmp.addLoadListener(() => {
       this._win.setBitmap(bmp);
 
-      this._win._scaleMode = effScaleMode(this._cfg);
+      this._win._scaleMode = IRMConfig.effScaleMode(this._cfg);
       this._win._recalcCamera(true);
 
       this._xform = calcXform(bmp, this._cfg);
@@ -1729,7 +2138,7 @@
     if (IRMap._currentScene === this) IRMap._currentScene = null;
   };
 
-  const _SceneInt_update = Scene_InteractiveMap.prototype.update;
+  // const _SceneInt_update = Scene_InteractiveMap.prototype.update;
   Scene_InteractiveMap.prototype.update = function () {
     // --- eredeti update
     Scene_MenuBase.prototype.update.call(this);
@@ -1784,13 +2193,14 @@
   Scene_InteractiveMap.prototype._updateTopLevel = function () {
     if (!this._topWin) return;
     const pieces = [];
+    const buttons = []; // <-- HIÁNYZÓ DEFINÍCIÓ PÓTOLVA
 
     // végig a paraméterben megadott sorrenden
     TL_ELEMENTS.forEach((raw) => {
       const e = raw.trim().toLowerCase();
 
-      // 1) showmap
-      if (e === "showmap") {
+      // 1) showmapname
+      if (e === "showmapname") {
         if (this._cfg && this._cfg.mapDisplayName) {
           pieces.push(this._cfg.mapDisplayName);
         } else {
@@ -1800,7 +2210,7 @@
         return;
       }
 
-      // ─── ShowCoord: kiírja a játékos tile-koordinátáit ──────────────
+      // ShowCoord
       if (e === "showcoord") {
         const px = $gamePlayer.x;
         const py = $gamePlayer.y;
@@ -1808,7 +2218,7 @@
         return;
       }
 
-      // 2) showbreadcumb / show breadcumb [+ opcionális topleveloff flag]
+      // showbreadcumb / show breadcumb [+ topleveloff]
       if (e.startsWith("showbreadcumb")) {
         if (this._breadcrumb.length > 1) {
           const tokens = e.split(/\s+/);
@@ -1816,7 +2226,7 @@
           const hideRoot = flag === "topleveloff" || flag === "top level off";
           const chain = hideRoot ? this._breadcrumb.slice(1) : this._breadcrumb;
           const names = chain.map((id) => {
-            const cfg = findCfgForMapId(id);
+            const cfg = IRMConfig.findCfgForMapId(id);
             if (cfg && cfg.mapDisplayName) return cfg.mapDisplayName;
             const info = $dataMapInfos[id];
             return info ? info.name : "MAP" + id;
@@ -1826,7 +2236,7 @@
         return;
       }
 
-      // 3) showdesc / show desc / show description
+      // showdesc / show description
       if (e === "showdesc" || e === "show desc" || e === "show description") {
         if (this._cfg && this._cfg.mapDescription) {
           pieces.push(this._cfg.mapDescription);
@@ -1834,7 +2244,7 @@
         return;
       }
 
-      // 4) showselected / show selected
+      // showselected
       if (e === "showselected" || e === "show selected") {
         if (this._selectedName) {
           pieces.push(this._selectedName);
@@ -1842,10 +2252,42 @@
         return;
       }
 
-      // ide lehet később további showXYZ parancsokat beilleszteni...
+      // openmap:<id|editorName>
+      // openmap:<id|editorName>
+      if (e.startsWith("openmap:")) {
+        const tokenOriginal = String(raw || "")
+          .slice("openmap:".length)
+          .trim();
+        const id = resolveMapIdToken(tokenOriginal);
+        if (id > 0 && $dataMapInfos && $dataMapInfos[id]) {
+          // 1) ha már a cél mapon vagyunk → ne jelenjen meg a gomb
+          const isCurrent = this._cfg && Number(this._cfg.mapId || 0) === id;
+          if (isCurrent) return;
+
+          // 2) feltételek (központi függvény) — ha nem érhető el, ne is jelenjen meg
+          const available =
+            typeof IRMap.canOpenMap === "function"
+              ? !!IRMap.canOpenMap(id)
+              : true;
+          if (!available) return;
+
+          const cfg = IRMConfig.findCfgForMapId(id);
+          const label =
+            (cfg && cfg.mapDisplayName) ||
+            ($dataMapInfos[id] && $dataMapInfos[id].name) ||
+            "MAP" + id;
+
+          // itt már biztos, hogy látszódhat és kattintható
+          buttons.push({ text: String(label), mapId: id, enabled: true });
+        }
+        return;
+      }
+
+      // ... ide jöhetnek a további tokenek ...
     });
 
-    this._topWin.refresh(pieces);
+    // Szöveg frissítés
+    this._topWin.refresh(pieces, buttons);
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -1853,8 +2295,7 @@
   // ─────────────────────────────────────────────────────────────
   Scene_InteractiveMap.prototype.switchToMapById = function (mapId, opts) {
     opts = opts || {};
-    const cfg =
-      typeof findCfgForMapId === "function" ? findCfgForMapId(mapId) : null;
+    const cfg = IRMConfig.findCfgForMapId(mapId);
 
     // Hozzáférés ellenőrzés (meglévő logikád)
     if (!IRMap.canOpenMap(mapId)) {
@@ -1870,14 +2311,14 @@
 
     // Fallback, ha nincs konfiguráció…
     if (!cfg) {
-      if (typeof ENABLE_FALLBACK !== "undefined" && ENABLE_FALLBACK) {
+      if (IRMConfig.enableFallback()) {
         if (typeof Scene_FallbackMap !== "undefined") {
           SceneManager.push(Scene_FallbackMap);
         } else {
           $gameMessage.add(
             Window_Base.prototype.convertEscapeCharacters.call(
               this,
-              TEXT_NO_MAP || "No map available."
+              IRMConfig.textNoMap() || "No map available."
             )
           );
         }
@@ -1897,7 +2338,7 @@
     bmp.addLoadListener(() => {
       // 1) ablak tartalma
       win.setBitmap(bmp);
-      win._scaleMode = effScaleMode(cfg);
+      win._scaleMode = IRMConfig.effScaleMode(cfg);
       win._recalcCamera(true);
       this._ensureScrollIndicators();
       this._updateTopLevel();
@@ -1923,6 +2364,7 @@
             win._markerLayer.mask = null;
           }
           win._poiMask = null;
+          this._reinstallPlayerMarkerSprites();
         }
 
         // 5) overlayRoot (map‐név, POI, egyebek) törlése
@@ -2062,6 +2504,34 @@
     this._triRight.y = innerY + innerH / 2;
   };
 
+  Scene_InteractiveMap.prototype._reinstallPlayerMarkerSprites = function () {
+    const win = this._win;
+    if (!win || !win._markerLayer) return;
+
+    const dot = win._playerDot;
+    const lbl = win._playerLabel;
+
+    // ha a clear után nincsenek a layeren, tegyük vissza
+    if (dot && !dot.parent) {
+      dot.visible = false; // majd _refreshMarker beállítja
+      win._markerLayer.addChild(dot);
+    }
+    if (lbl && !lbl.parent) {
+      lbl.visible = false;
+      win._markerLayer.addChild(lbl);
+    }
+
+    // opcionális: tegyük legfelülre (hogy mindent felülrajzoljon)
+    if (dot && dot.parent) {
+      win._markerLayer.removeChild(dot);
+      win._markerLayer.addChild(dot);
+    }
+    if (lbl && lbl.parent) {
+      win._markerLayer.removeChild(lbl);
+      win._markerLayer.addChild(lbl);
+    }
+  };
+
   // Kényelmi wrapper: név alapján
   Scene_InteractiveMap.prototype.switchToMapByEditorName = function (
     editorName,
@@ -2095,15 +2565,26 @@
   /* --------------- 2) KÖZÖS segédfüggvény --------------- */
 
   function handleMapOpen() {
-    if (GLOBAL_DISABLED || DISABLED_SET.has($gameMap.mapId())) {
-      if (params.fallbackMapImage) {
+    // Globális / map-szintű tiltás
+    if (
+      FORCE_GLOBAL_LOCK ||
+      GLOBAL_DISABLED ||
+      FORCE_DISABLED_SET.has($gameMap.mapId()) ||
+      DISABLED_SET.has($gameMap.mapId())
+    ) {
+      if (
+        IRMConfig.enableFallback() &&
+        IRMConfig.fallbackImage() &&
+        typeof Scene_FallbackMap !== "undefined"
+      ) {
         SceneManager.push(Scene_FallbackMap);
       } else {
-        $gameMessage.add(TEXT_NO_MAP);
+        $gameMessage.add(IRMConfig.textNoMap());
       }
       return;
     }
-    const cfg = findCfg();
+
+    const cfg = IRMConfig.mapCfg();
     if (cfg) {
       if (!canOpenInteractiveMap(cfg)) {
         const msg = getOpenInteractiveMapFailureMessage(cfg);
@@ -2114,8 +2595,6 @@
         }
         return;
       }
-      // → ide szúrd be a logot és a SE-t:
-      console.log("▶️ Opening Map SE:", OPEN_SE);
       if (OPEN_SE) {
         AudioManager.playSe({
           name: OPEN_SE,
@@ -2127,15 +2606,14 @@
       SceneManager.push(Scene_InteractiveMap);
       return;
     }
+    if (!IRMConfig.enableFallback()) return;
 
-    if (!ENABLE_FALLBACK) return;
-
-    if (FALLBACK_IMG) {
+    if (IRMConfig.fallbackImage() && typeof Scene_FallbackMap !== "undefined") {
       SceneManager.push(Scene_FallbackMap);
     } else {
       const txt = Window_Base.prototype.convertEscapeCharacters.call(
         this,
-        TEXT_NO_MAP
+        IRMConfig.textNoMap()
       );
       $gameMessage.add(txt);
     }
@@ -2149,13 +2627,13 @@
     params,
     MAP_CFGS,
     getConfigForMap: (mapId) =>
-      findCfgForMapId(mapId != null ? mapId : $gameMap.mapId()),
+      IRMConfig.findCfgForMapId(mapId != null ? mapId : $gameMap.mapId()),
     getTransformForMap(mapId, bmp) {
       // NOTE: needs bitmap; if omitted and current scene active, reuse its transform
       if (mapId == null || mapId === $gameMap.mapId()) {
         const sc = IRMap.currentScene();
         if (sc && sc.mapTransform()) return sc.mapTransform();
-        const cfg = findCfg();
+        const cfg = IRMConfig.mapCfg();
         if (!cfg) return null;
         const b =
           bmp ||
@@ -2165,7 +2643,7 @@
         return calcXform(b, cfg);
       } else {
         // other mapId: synchronous only if that bitmap is provided + loaded
-        const cfg = findCfgForMapId(mapId);
+        const cfg = IRMConfig.findCfgForMapId(mapId);
         if (!cfg) return null;
         const b =
           bmp ||
@@ -2207,6 +2685,56 @@
       const sc = IRMap.currentScene();
       return sc ? sc.mapWindow() : null;
     },
+    /** Display name (Core: MapName) -> ha nincs, az editor neve. */
+    getMapDisplayName(mapId) {
+      const cfg = IRMConfig.findCfgForMapId(mapId);
+      if (cfg && cfg.mapDisplayName) return cfg.mapDisplayName;
+      const info = $dataMapInfos[mapId];
+      return info ? info.name : "";
+    },
+
+    /** Rövid leírás (Core: Mapdesc). */
+    getMapDesc(mapId) {
+      const cfg = IRMConfig.findCfgForMapId(mapId);
+      return (cfg && cfg.mapDescription) || "";
+    },
+
+    /** Notes: rövid infó (Core: Info). */
+    getMapNoteInfo(mapId) {
+      const cfg = IRMConfig.findCfgForMapId(mapId);
+      return (cfg && cfg.mapNoteInfo) || "";
+    },
+
+    /** Notes: profilkép (Core: MapNoteImg). Csak a fájlnév (img/maps). */
+    getMapNoteImage(mapId) {
+      const cfg = IRMConfig.findCfgForMapId(mapId);
+      return (cfg && cfg.mapNoteImage) || "";
+    },
+
+    isMapHidden(mapId) {
+      const cfg = IRMConfig.findCfgForMapId(mapId);
+      return !!(cfg && cfg.mapHidden);
+    },
+
+    /** Kényelmi egycsomagos lekérdezés mindhez. */
+    getMapMeta(mapId) {
+      return {
+        displayName: this.getMapDisplayName(mapId),
+        description: this.getMapDesc(mapId),
+        info: this.getMapNoteInfo(mapId),
+        noteImage: this.getMapNoteImage(mapId),
+        hidden: this.isMapHidden(mapId),
+      };
+    },
+
+    getVisibleMapIds() {
+      const out = [];
+      for (let i = 1; i < $dataMapInfos.length; i++) {
+        if (!$dataMapInfos[i]) continue;
+        if (!this.isMapHidden(i)) out.push(i);
+      }
+      return out;
+    },
 
     // Overlay registration ----------------------------------------------------
     _overlayFns: [],
@@ -2236,38 +2764,6 @@
           console.error(`[${PLUGIN}] emit error (${evt}):`, e);
         }
       }
-    },
-    imageToWindow(imgX, imgY, win) {
-      win = win || IRMap.currentWindow();
-      if (!win) return null;
-
-      const dxOff = win._drawDX || 0;
-      const dyOff = win._drawDY || 0;
-      const sx = win.x + win.padding + dxOff + (imgX - cam.x) * s;
-      const sy = win.y + win.padding + dyOff + (imgY - cam.y) * s;
-      return { x: sx, y: sy };
-    },
-
-    screenToImage(scrX, scrY, win) {
-      win = win || IRMap.currentWindow();
-      if (!win) return null;
-      const dxOff = win._drawDX || 0;
-      const dyOff = win._drawDY || 0;
-      const dx = scrX - win.x - win.padding - dxOff;
-      const dy = scrY - win.y - win.padding - dyOff;
-      if (
-        dx < 0 ||
-        dy < 0 ||
-        dx > (win._drawW || win.contentsWidth()) ||
-        dy > (win._drawH || win.contentsHeight())
-      ) {
-        return null;
-      }
-      const cam = win.cameraRect();
-      const s = win.coverScale();
-      const imgX = cam.x + dx / s;
-      const imgY = cam.y + dy / s;
-      return { imgX, imgY };
     },
   };
 
@@ -2423,16 +2919,14 @@
 
   // Feltételes hozzáférés – újrahasznosítjuk a core belső függvényeit:
   IRMap.canOpenMap = function (mapId) {
-    const cfg =
-      typeof findCfgForMapId === "function" ? findCfgForMapId(mapId) : null;
+    const cfg = IRMConfig.findCfgForMapId(mapId);
     if (!cfg) return true;
     return typeof canOpenInteractiveMap === "function"
       ? canOpenInteractiveMap(cfg)
       : true;
   };
   IRMap.getOpenMapFailureMessage = function (mapId) {
-    const cfg =
-      typeof findCfgForMapId === "function" ? findCfgForMapId(mapId) : null;
+    const cfg = IRMConfig.findCfgForMapId(mapId);
     if (!cfg) return "";
     return typeof getOpenInteractiveMapFailureMessage === "function"
       ? getOpenInteractiveMapFailureMessage(cfg)
@@ -2440,6 +2934,9 @@
   };
 
   IRMap.switchToMapById = function (mapId, opts) {
+    if (!IRMap.canOpenMap(mapId)) {
+      return;
+    }
     const sc = IRMap.currentScene && IRMap.currentScene();
     if (!sc || !(sc instanceof Scene_InteractiveMap)) {
       SceneManager.push(Scene_InteractiveMap);
@@ -2453,6 +2950,20 @@
     } else {
       sc.switchToMapById(mapId, opts);
     }
+  };
+
+  IRMap.getPoiSummaries = function (mapIdOrName, opts) {
+    if (window.IME && typeof IME.getPoiSummaries === "function") {
+      return IME.getPoiSummaries(mapIdOrName, opts);
+    }
+    return [];
+  };
+
+  IRMap.getVisiblePoiSummaries = function (mapIdOrName) {
+    if (window.IME && typeof IME.getVisiblePoiSummaries === "function") {
+      return IME.getVisiblePoiSummaries(mapIdOrName);
+    }
+    return [];
   };
 
   IRMap.switchToMapByEditorName = function (editorName, opts) {
@@ -2502,11 +3013,17 @@
   const DISABLED_SET = new Set();
   let GLOBAL_DISABLED = false;
 
-  // wrap original canOpenMap
+  const FORCE_DISABLED_SET = new Set();
+  let FORCE_GLOBAL_LOCK = false;
+
   const _origCanOpenMap = IRMap.canOpenMap;
   IRMap.canOpenMap = function (mapId) {
+    // hard lock
+    if (FORCE_GLOBAL_LOCK) return false;
+    if (mapId != null && FORCE_DISABLED_SET.has(mapId)) return false;
     if (GLOBAL_DISABLED) return false;
-    if (DISABLED_SET.has(mapId)) return false;
+    if (mapId != null && DISABLED_SET.has(mapId)) return false;
+
     return _origCanOpenMap.call(this, mapId);
   };
 
@@ -2517,35 +3034,73 @@
     _Game_Interpreter_pluginCommand.apply(this, arguments);
 
     if (command === "DisableMap") {
-      // Aktuális map vagy globális letiltás
       if (args[0] && args[0].toLowerCase() === "current") {
         DISABLED_SET.add($gameMap.mapId());
       } else {
         GLOBAL_DISABLED = true;
       }
-      // Ha van második argumentum, az fallback
       if (args[1]) {
-        // Ha szóközös szöveget is szeretnél, inkább csatlakozd az összeset:
         const fb = args.slice(1).join(" ");
         if (fb.match(/\.(png|jpe?g|bmp)$/i)) {
-          // képes fallback
-          params.fallbackMapImage = fb;
-          FALLBACK_IMG = fb;
+          IRMConfig.setFallbackImage(fb);
         } else {
-          // szöveges fallback
-          params.textIfNoMapFound = fb;
-          TEXT_NO_MAP = fb;
+          IRMConfig.setTextNoMap(fb);
         }
       }
     }
 
+    if (command === "ForceDisableMap") {
+      if (args[0]) {
+        const a0 = args[0].toLowerCase();
+        if (a0 === "current") {
+          FORCE_DISABLED_SET.add($gameMap.mapId());
+        } else {
+          const id = Number(args[0]) || 0;
+          if (id > 0) FORCE_DISABLED_SET.add(id);
+          else FORCE_GLOBAL_LOCK = true;
+        }
+      } else {
+        FORCE_GLOBAL_LOCK = true;
+      }
+      if (args[1]) {
+        const fb = args.slice(1).join(" ");
+        if (/\.(png|jpe?g|bmp)$/i.test(fb)) IRMConfig.setFallbackImage(fb);
+        else IRMConfig.setTextNoMap(fb);
+      }
+    }
+
+    if (command === "CloseMap") {
+      // Bezárja, ha épp a térképszcénában vagy fallbackben vagyunk
+      const sc = SceneManager._scene;
+      if (
+        sc instanceof Scene_InteractiveMap ||
+        (typeof Scene_FallbackMap !== "undefined" &&
+          sc instanceof Scene_FallbackMap)
+      ) {
+        SceneManager.pop();
+      }
+    }
+
     if (command === "EnableMap") {
-      if (args[0] && args[0].toLowerCase() === "current") {
-        DISABLED_SET.delete($gameMap.mapId());
+      if (args[0]) {
+        const a0 = args[0].toLowerCase();
+        if (a0 === "current") {
+          DISABLED_SET.delete($gameMap.mapId());
+          FORCE_DISABLED_SET.delete($gameMap.mapId());
+        } else {
+          const id = Number(args[0]) || 0;
+          if (id > 0) {
+            DISABLED_SET.delete(id);
+            FORCE_DISABLED_SET.delete(id);
+          } else {
+            GLOBAL_DISABLED = false;
+            FORCE_GLOBAL_LOCK = false;
+          }
+        }
       } else {
         GLOBAL_DISABLED = false;
+        FORCE_GLOBAL_LOCK = false;
       }
-      // (nem kell itt fallbacket törölni, de ha szeretnéd, tehetsz ide is logikát)
     }
     if (command === "OpenMap") {
       // ha nincs args[0], akkor a current map
@@ -2564,8 +3119,10 @@
     return {
       globalDisabled: GLOBAL_DISABLED,
       disabledMaps: Array.from(DISABLED_SET),
-      textNoMap: TEXT_NO_MAP,
-      fallbackImg: FALLBACK_IMG,
+      textNoMap: IRMConfig.textNoMap(),
+      fallbackImg: IRMConfig.fallbackImage(),
+      forceGlobal: FORCE_GLOBAL_LOCK,
+      forceDisabledMaps: Array.from(FORCE_DISABLED_SET),
     };
   }
 
@@ -2575,8 +3132,12 @@
     DISABLED_SET.clear();
     (s.disabledMaps || []).forEach((id) => DISABLED_SET.add(id));
 
-    if (typeof s.textNoMap === "string") TEXT_NO_MAP = s.textNoMap;
-    if (typeof s.fallbackImg === "string") FALLBACK_IMG = s.fallbackImg;
+    if (typeof s.textNoMap === "string") IRMConfig.setTextNoMap(s.textNoMap);
+    if (typeof s.fallbackImg === "string")
+      IRMConfig.setFallbackImage(s.fallbackImg);
+    FORCE_GLOBAL_LOCK = !!s.forceGlobal;
+    FORCE_DISABLED_SET.clear();
+    (s.forceDisabledMaps || []).forEach((id) => FORCE_DISABLED_SET.add(id));
   }
 
   /* ---------- SAVE ---------- */

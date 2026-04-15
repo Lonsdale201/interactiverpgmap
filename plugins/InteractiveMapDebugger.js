@@ -1,6 +1,7 @@
 /*:
  * @plugindesc  InteractiveRpgMap – Debug helper  v0.3
- * @author      🔧
+ * @author Soczó Kristóf
+ * @version v1.0
  * @help
  *   Helyezd a core és a többi IRMap addon után.
  *   – Betöltési sorrend + duplikált script detektálás
@@ -8,6 +9,9 @@
  *   – ClickSys patch: trigger / empty-click, register/unregister log
  *   – UserMarkers patch: _promptNote + empty-click watch + _makeNote hook
  *   – Ha ClickSys vagy IRMap később jön létre, vár rájuk
+ *
+ * Changelog:
+ *   - 2026.04.06 - Initial release v1.0
  */
 
 (() => {

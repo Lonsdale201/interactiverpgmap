@@ -1,6 +1,7 @@
 ﻿/*:
  * @plugindesc v1.1 Gamemory - persistent memory for map visits and battle stats (enemy kills, troop encounters/win/loss, total victories/game overs/monster kills). Data survives save/load.
- * @author INteractiveRPG
+ * @author Soczó Kristóf
+ * @version v1.0
  * @help
  * Goals:
  * 1) Track whether a map was ever visited and how many times.
@@ -92,6 +93,9 @@
  *   // Logging helpers
  *   GAMEMORY LOG_BATTLE          // logs current troop id + encounter results
  *   GAMEMORY LOG_ALL             // dumps all stats
+ *
+ * Changelog:
+ *   - 2026.04.06 - Initial release v1.0
  */
 
 (function () {

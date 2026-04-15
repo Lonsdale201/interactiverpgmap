@@ -1,6 +1,7 @@
 /*:
  * @plugindesc InteractiveMapRouter – útvonalrajzolás kijelölt Region ID-n, POI-ra kattintva (aktuális map), toggle-olható láthatósággal v1.2
- * @author Soczó
+ * @author Soczó Kristóf
+ * @version v1.0
  *
  * @param EnableMovingRouter
  * @text Enable Moving router
@@ -37,11 +38,11 @@
  * @text Snap radius around POI (tiles)
  * @type number
  * @min 0
- * @desc Hány tile-on belül fogadjuk el, hogy a POI „a route-hálózathoz közel van”.
+ * @desc Hány tile-on belül fogadjuk el, hogy a POI „a route-hálózathoz közel van".
  * @default 6
  * 
  * @param GoalXEnabled
- * @text Draw goal “X”
+ * @text Draw goal "X"
  * @type boolean
  * @on On
  * @off Off
@@ -49,24 +50,32 @@
  * @desc Ha be van kapcsolva, X-et rajzol a célcsempére.
 
  * @param GoalXSizePx
- * @text Goal “X” size (px)
+ * @text Goal "X" size (px)
  * @type number
  * @min 6
  * @max 128
  * @default 20
  * @desc Az X teljes mérete (pixel).
 
- * @param GoalXHandDrawn
- * @text Hand-drawn look for X
- * @type boolean
- * @on On
- * @off Off
- * @default true
- * @desc Ha On, kicsit “kézzel rajzolt” lesz (enyhe jitter).
+ * @param GoalXStyle
+ * @text Goal "X" style
+ * @type select
+ * @option Simple
+ * @option Handdrawn
+ * @option Custom
+ * @default Simple
+ * @desc Simple = clean X, Handdrawn = irregular pirate-style X, Custom = your own image from img/maplabels/.
+ *
+ * @param GoalXCustomImage
+ * @text Goal custom image (Custom only)
+ * @type file
+ * @dir img/maplabels
+ * @default
+ * @desc Only used when style = Custom. Place the image file in img/maplabels/.
  *
  * @help
  * Használat:
- *  - Állíts be egy region ID-t a pálya „járható útvonalaira”.
+ *  - Állíts be egy region ID-t a pálya „járható útvonalaira".
  *  - POI-ra kattintva a plugin megkeresi a legrövidebb utat a kijelölt régió
  *    csempéin a játékostól a POI közeléig (ha a POI körül van ilyen régió),
  *    és szaggatottan felrajzolja.
@@ -78,14 +87,17 @@
  * Szabályok:
  *  - Nincs átlós lépés (csak 4-irány).
  *  - Csak a megadott RouteRegionId csempéin halad a fő útvonal.
- *  - Start/Goal csak akkor „snap-elhető”, ha a megadott sugaron belül van ilyen régió.
+ *  - Start/Goal csak akkor „snap-elhető", ha a megadott sugaron belül van ilyen régió.
  *  - ExcludedRegions ID-ken soha nem rajzolunk (a player→bekötés sem mehet át rajtuk).
  *  - Csak az AKTUÁLIS mapon működik (ahol a játékos áll).
  *
  * Törlés:
  *  - Map-váltáskor és Scene zárásakor törli. Üres kattintás NEM törli.
  *
- * Függőség: InteractiveRpgMap (core ≥ 1.4.1), Elements/POI emit („poi-click”)
+ * Changelog:
+ *  - 2026.04.06 - Initial release v1.0
+ *
+ * Függőség: InteractiveRpgMap (core ≥ 1.4.1), Elements/POI emit („poi-click")
  */
 (() => {
   "use strict";
@@ -107,7 +119,9 @@
 
   const GOALX_ENABLED = String(prm.GoalXEnabled || "true") !== "false";
   const GOALX_SIZE = Math.max(6, Number(prm.GoalXSizePx || 20));
-  const GOALX_HAND = String(prm.GoalXHandDrawn || "true") !== "false";
+  const GOALX_STYLE = String(prm.GoalXStyle || "Simple").trim().toLowerCase();
+  const GOALX_CUSTOM_RAW = String(prm.GoalXCustomImage || "").trim();
+  const GOALX_CUSTOM_IMG = GOALX_CUSTOM_RAW.replace(/^img[\/\\]maplabels[\/\\]/i, "").replace(/\.(png|jpe?g|bmp|gif)$/i, "");
 
   if (!window.IRMap) {
     console.error(`[${PLUGIN}] IRMap core required!`);
@@ -144,6 +158,7 @@
   let _routeWin = null; // Window_InteractiveMap referencia az átrajzoláshoz
   let _routeScene = null;
   let _visible = true; // toggle-olható láthatóság
+  let _goalSprite = null;
 
   function ensureRouteLayer(win) {
     if (!win) return null;
@@ -168,8 +183,19 @@
       if (_routeLayer.parent) _routeLayer.parent.removeChild(_routeLayer);
       _routeLayer = null;
     }
+    if (_goalSprite) {
+      if (_goalSprite.parent) _goalSprite.parent.removeChild(_goalSprite);
+      _goalSprite = null;
+    }
     _routeWin = null;
     _routeScene = null;
+  }
+
+  function routeLayerOffset(win) {
+    return {
+      x: win.x + win.padding,
+      y: win.y + win.padding,
+    };
   }
 
   // determinisztikus RNG (tile + map alapján), hogy ne "rezegjen" az X minden frame-en
@@ -207,10 +233,9 @@
     const sw = IRMap.imageToWindow(ia.imgX, ia.imgY, win);
     if (!sw) return;
 
-    const offX = win.x + win.padding + (win._drawDX || 0);
-    const offY = win.y + win.padding + (win._drawDY || 0);
-    const cx = sw.x - offX;
-    const cy = sw.y - offY;
+    const off = routeLayerOffset(win);
+    const cx = sw.x - off.x;
+    const cy = sw.y - off.y;
 
     const h = sizePx / 2;
 
@@ -219,9 +244,6 @@
       b1 = { x: cx + h, y: cy + h };
     let a2 = { x: cx - h, y: cy + h },
       b2 = { x: cx + h, y: cy - h };
-
-    // brush‑szerű végek
-    const capR = Math.max(1, thick * 0.55);
 
     g.lineStyle(thick, color, 1);
 
@@ -266,32 +288,54 @@
         // stroke (quadraticBezier)
         g.moveTo(A.x, A.y);
         g.quadraticCurveTo(kx, ky, B.x, B.y);
-
-        // ecsetvégek: telt pöttyök
-        g.beginFill(color, 1);
-        g.drawCircle(A.x, A.y, capR);
-        g.drawCircle(B.x, B.y, capR);
-        g.endFill();
       }
 
       drawCurvedCross(a1, b1);
       drawCurvedCross(a2, b2);
     } else {
-      // szabályos X + kerek végek
       g.moveTo(a1.x, a1.y);
       g.lineTo(b1.x, b1.y);
       g.moveTo(a2.x, a2.y);
       g.lineTo(b2.x, b2.y);
-      g.beginFill(color, 1);
-      g.drawCircle(a1.x, a1.y, capR);
-      g.drawCircle(b1.x, b1.y, capR);
-      g.drawCircle(a2.x, a2.y, capR);
-      g.drawCircle(b2.x, b2.y, capR);
-      g.endFill();
     }
   }
 
-  // --- „közeli” RouteRegion csempe keresés SUGARON BELÜL + exclude check ----
+  function positionGoalCustom(win) {
+    if (!_routeTiles || !_routeTiles.length) return;
+    var last = _routeTiles[_routeTiles.length - 1];
+    if (isExcludedTile(last.x, last.y)) {
+      if (_goalSprite) _goalSprite.visible = false;
+      return;
+    }
+    var sub = win._routeSubLayer;
+    if (!sub) return;
+    if (!_goalSprite) {
+      var texPath = "img/maplabels/" + GOALX_CUSTOM_IMG + ".png";
+      var tex = PIXI.Texture.fromImage(texPath);
+      _goalSprite = new PIXI.Sprite(tex);
+      _goalSprite.anchor.set(0.5);
+      var applyScale = function() {
+        var w = tex.width, h = tex.height;
+        if (w > 0 && h > 0) {
+          var s = GOALX_SIZE / Math.max(w, h);
+          _goalSprite.scale.set(s);
+        }
+      };
+      if (tex.baseTexture.hasLoaded) applyScale();
+      else tex.baseTexture.once("loaded", applyScale);
+      sub.addChild(_goalSprite);
+    }
+    var ia = IRMap.worldToImage(last.x, last.y, null);
+    if (!ia) { _goalSprite.visible = false; return; }
+    var sw = IRMap.imageToWindow(ia.imgX, ia.imgY, win);
+    if (!sw) { _goalSprite.visible = false; return; }
+    var off = routeLayerOffset(win);
+    _goalSprite.x = sw.x - off.x;
+    _goalSprite.y = sw.y - off.y;
+    _goalSprite.visible = _visible;
+  }
+
+  // --- „közeli" RouteRegion csempe keresés SUGARON BELÜL + exclude check ----
   function nearestRouteRegionWithinRadius(cx, cy, r) {
     const W = $dataMap.width,
       H = $dataMap.height;
@@ -480,20 +524,21 @@
     return path;
   }
 
-  // --- rajzolás (szaggatott „dash” minden szomszédpárra) --------------------
+  // --- rajzolás (szaggatott „dash" minden szomszédpárra) --------------------
   function redrawRoute() {
     if (!_routeTiles || !_routeWin || !_routeLayer) return;
     const win = _routeWin;
     const g = _routeLayer;
     g.clear();
     g.visible = _visible;
+    if (_goalSprite) _goalSprite.visible = _visible;
     if (!_visible) return;
 
     for (let i = 0; i < _routeTiles.length - 1; i++) {
       const a = _routeTiles[i],
         b = _routeTiles[i + 1];
 
-      // ha bármelyik végpont excluded régión áll, ezt a „dash”-t kihagyjuk
+      // ha bármelyik végpont excluded régión áll, ezt a „dash"-t kihagyjuk
       if (isExcludedTile(a.x, a.y) || isExcludedTile(b.x, b.y)) continue;
 
       const ia = IRMap.worldToImage(a.x, a.y, null);
@@ -504,7 +549,7 @@
       const sb = IRMap.imageToWindow(ib.imgX, ib.imgY, win);
       if (!sa || !sb) continue;
 
-      // „dash” = a két pont közepe köré rajzolt rövid szegmens
+      // „dash" = a két pont közepe köré rajzolt rövid szegmens
       const mx = (sa.x + sb.x) / 2,
         my = (sa.y + sb.y) / 2;
       const dx = sb.x - sa.x,
@@ -516,28 +561,23 @@
       const hx = (ux * dash) / 2,
         hy = (uy * dash) / 2;
 
-      const offX = win.x + win.padding + (win._drawDX || 0);
-      const offY = win.y + win.padding + (win._drawDY || 0);
+      const off = routeLayerOffset(win);
 
       g.lineStyle(ROUTE_THICK, ROUTE_COLOR, 0.95);
-      g.moveTo(mx - hx - offX, my - hy - offY);
-      g.lineTo(mx + hx - offX, my + hy - offY);
+      g.moveTo(mx - hx - off.x, my - hy - off.y);
+      g.lineTo(mx + hx - off.x, my + hy - off.y);
     }
     if (GOALX_ENABLED && _routeTiles && _routeTiles.length > 0) {
       const last = _routeTiles[_routeTiles.length - 1];
-      // ha a cél tile excluded lenne, nem rajzolunk X-et
       if (!isExcludedTile(last.x, last.y)) {
-        const thick = Math.max(ROUTE_THICK, 2); // picit vastagabb jól áll az X-nek
-        drawGoalXAt(
-          win,
-          g,
-          last.x,
-          last.y,
-          GOALX_SIZE,
-          ROUTE_COLOR,
-          thick,
-          GOALX_HAND
-        );
+        if (GOALX_STYLE === "custom" && GOALX_CUSTOM_IMG) {
+          positionGoalCustom(win);
+        } else {
+          const thick = Math.max(ROUTE_THICK, 2);
+          drawGoalXAt(win, g, last.x, last.y, GOALX_SIZE, ROUTE_COLOR, thick, GOALX_STYLE === "handdrawn");
+        }
+      } else if (_goalSprite) {
+        _goalSprite.visible = false;
       }
     }
   }
@@ -621,6 +661,7 @@
     if (Input.isTriggered && Input.isTriggered("routeToggle")) {
       _visible = !_visible;
       if (_routeLayer) _routeLayer.visible = _visible;
+      if (_goalSprite) _goalSprite.visible = _visible;
     }
   });
 

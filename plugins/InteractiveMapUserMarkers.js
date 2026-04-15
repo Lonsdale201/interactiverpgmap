@@ -1,6 +1,7 @@
 /*:
  * @plugindesc v1.10 User Markers – precise position (Shift+Click), empty label saving, DEL delete, px scaling, ESC cancel, blink, layer & map-switch fixes + initial enable & note disable + plugin commands
- * @author Soczó
+ * @author Soczó Kristóf
+ * @version v1.0
  *
  * @param MarkerType
  * @text Marker Type
@@ -95,6 +96,9 @@
  *
  *  Note:
  *   – Command states are saved and remain in effect after loading.
+ *
+ *  Changelog:
+ *   - 2026.04.06 - Initial release v1.0
  *
  *  Further info: https://github.com/Lonsdale201/rpgmakermyplugins/wiki/Interactive-Map-User-Markers
  */

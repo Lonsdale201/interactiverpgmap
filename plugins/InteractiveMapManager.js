@@ -282,6 +282,5 @@
   // --- Opció választás – példa ---
   safeOnIME("poi-option", ({ poi, opt }) => {
     console.log(`[${PLG}] option selected:`, opt, "for", poi && poi.name);
-    // ide jöhet pl. common event trigger
   });
 })();

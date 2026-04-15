@@ -2,78 +2,151 @@
  * @plugindesc InteractiveMapNpc – NPC/event ikonok, IME tagek és portré ablak az InteractiveRpgMap-hez
  * @target MV
  * @author  Soczó Kristóf
- * @version 0.2
+ * @version 1.0
  *
  * @param showNpcLabel
- * @text NPC címkék
+ * @text Show Event label
  * @type boolean
  * @on Mutasd
  * @off Rejtsd
  * @default true
+ * @desc Enable or disable to show the event label under the event sprite in the map. You can overwrite in in the event note <IME NONAME>.
  *
  * @param npcIconWidth
- * @text Event Width(px)
+ * @text Event Width (px)
  * @type number
  * @min 16
  * @default 96
+ * @desc Global setting for the width of the event image (in px). You can overwrite in in the event note <IME H:96 W:96>
  *
  * @param npcIconHeight
  * @text Event Height (px)
  * @type number
  * @min 16
  * @default 96
+ * @desc Global setting for the height of the event image (in px). You can overwrite in in the event note <IME H:96 W:96>
  *
  * @param npcLabelFontSize
  * @text Event label font size
  * @type number
  * @min 8
  * @default 18
+ * @desc Event label font size
+ * 
+ * @param portraitBadgeFontSize
+ * @text Portrait badge font size
+ * @type number
+ * @min 8
+ * @default 16
+ *
+ * @param portraitNameFontSize
+ * @text Portrait name font size
+ * @type number
+ * @min 8
+ * @default 18
+ *
+ * @param portraitDescFontSize
+ * @text Portrait description font size
+ * @type number
+ * @min 8
+ * @default 16
+ *
  *
  * @param portraitImgWinWidth
- * @text Portré kép ablak szélesség
+ * @text Portrait Img Window Width
  * @type number
- * @min 120
+ * @min 26
  * @default 240
+ * @desc IMG Portrait window width (in px)
  *
  * @param portraitImgWinHeight
- * @text Portré kép ablak magasság
+ * @text Portrait Img Window Height
  * @type number
- * @min 120
+ * @min 26
  * @default 240
+ * @desc IMG Portrait window height (in px)
  *
  * @param portraitTextWinWidth
- * @text Portré szöveg ablak szélesség
+ * @text Portrait Text Window Weight
  * @type number
- * @min 120
- * @default 260
+ * @min 26
+ * @default 240
  *
  * @param portraitTextWinHeight
- * @text Portré szöveg ablak magasság
+ * @text Portrait Text Window Height
  * @type number
- * @min 120
- * @default 260
+ * @min 26
+ * @default 240
  *
  * @param portraitWindowSkin
- * @text Portré ablak skinsheet
+ * @text Portrait Window Skin
  * @type file
  * @dir img/system
- * @desc Ha megadod, a portré ablak ezt a skin-t használja.
+ * @desc Leave empty to use the default System Window.
  *
  * @param faceImageDir
- * @text Egyedi portré képek mappa
+ * @text Custom Portrait IMg folder
  * @type text
  * @default img/imecustomfaces
- * @desc A FACEIMG: Fajlnev.png innen töltődik (alapértelmezett: img/imecustomfaces)
+ * @desc FACEIMG: File name.png is loaded from here (default: img/imecustomfaces)
  *
  * @help
- * Használat:
- *  - Event Note/Comment: <IME> használhatod így is <IME NONAME> -> ilyenkor a térképen nem lesz ott az event neve
- *  - Portré meta az aktív page Comment soraiban: (commentet használj hozzá a definíciókhoz)
- *      IMENAME: Npc neve
- *      IMEDESC: Többsoros\nleírás támogatott.
- *      FACEIMG: Valaki.png (img/imecustomfaces) -> hozd létre hozzá a imecustomfaces mappát közvetlenül az img belül
- * Csak a JELENLEGI pályán lévő eventeket rajzolja, és a térképen a
- * játékossal azonos pálya megnyitásakor.
+ * USAGE
+ * ------
+ * Show any event on the Interactive Map by adding an IME tag in the Event page:s
+ *
+ *  <IME>
+ *
+ * Options:
+ *  <IME NONAME>     → hides the label under the icon (the label = the event’s name by default)
+ *  <IME H:96 W:96>  → overrides the icon’s size (in pixels) on the map overlay
+ *
+ * Notes:
+ * - The event’s current character graphic is used as the icon. It live‑syncs while the event moves.
+ * - Visibility also tracks the event (e.g. page changes / erased) on the player’s current map only.
+ * - You can place *any* event on the map, not just character NPCs.
+ * 
+ * Portrait metadata (on the active page, in Comment commands)
+ * -----------------------------------------------------------
+ * Add comment lines to the event’s *active* page:
+ *
+ * IMENAME: Evelyn
+ * IMEDESC: Multi-line\ndescription supported.
+ * IMEFACEIMG: Actor1_3
+ * IMEBADGE: resident
+ *
+ * Meaning:
+ *- IMENAME    → display name (overrides the event name for the label)
+ *- IMEDESC    → description text (supports \n or <br> line breaks)
+ * - IMEFACEIMG → portrait image filename (loaded from the “faceImageDir” plugin param,
+ *               default: img/imecustomfaces). Use filename without path; extension optional.
+ * - IMEBADGE   → small text badge shown in the top-left of the portrait image window
+ *
+ * Behavior:
+ * - If you provide IMENAME only, there is **no** portrait window on click (the label still shows IMENAME).
+ * - A portrait window opens on click only if both a name and a description exist.
+ * - The badge is drawn like a pill in the portrait’s top-left (no icon).
+ *
+ * Extra IME tag option
+ * --------------------
+ * <IME NOINT>  → the event remains visible but is **not** clickable on the map
+ *               (no portrait window; also no “poi-click” emission).
+ *
+ *Integration & scope
+ *-------------------
+ *- On NPC click, the plugin emits: IRMap.emit("poi-click", { poi }) — useful for other plugins (e.g. router).
+ *- Only events on the player’s **current** map are drawn (by design, for live sync).
+ *
+ * Tips
+ * ----
+ * - The label under the icon can be globally shown/hidden via plugin parameters.
+ * - You can override icon size per-event via <IME H:.. W:..>.
+ * - Portrait window skin, image/text window sizes, and font sizes are configurable via plugin params.
+
+Learn more (plugin commands & details)
+--------------------------------------
+See: https://github.com/Lonsdale201/rpgmakermyplugins/wiki/Interactive-Map-Npc
+
  */
 (() => {
   "use strict";
@@ -85,7 +158,11 @@
   const SHOW_LABEL = P("showNpcLabel") !== "false";
   const ICON_W = +P("npcIconWidth") || 96;
   const ICON_H = +P("npcIconHeight") || 96;
+
   const LABEL_FONT = +P("npcLabelFontSize") || 18;
+  const BADGE_FONT = +P("portraitBadgeFontSize") || 16;
+  const NAME_FONT = +P("portraitNameFontSize") || 18;
+  const DESC_FONT = +P("portraitDescFontSize") || 16;
 
   const IMG_W = +P("portraitImgWinWidth") || 240;
   const IMG_H = +P("portraitImgWinHeight") || 240;
@@ -132,7 +209,7 @@
   }
 
   function readPortraitMeta(ev) {
-    const res = { name: "", desc: "", face: "" };
+    const res = { name: "", desc: "", face: "", badge: "" };
     const page = ev.page && ev.page();
     if (!page || !page.list) return res;
 
@@ -146,14 +223,25 @@
     for (let i = 0; i < page.list.length; i++) {
       const cmd = page.list[i];
       if (!cmd || (cmd.code !== 108 && cmd.code !== 408)) continue;
-      const line = String((cmd.parameters && cmd.parameters[0]) || "");
+      const raw = String((cmd.parameters && cmd.parameters[0]) || "");
+      const line = raw.trim();
+
       let m;
       if ((m = line.match(/^\s*IMENAME\s*:\s*(.*)$/i))) {
         res.name = m[1].trim();
       } else if ((m = line.match(/^\s*IMEDESC\s*:\s*(.*)$/i))) {
         res.desc = m[1].trim();
+      } else if ((m = line.match(/^\s*IMEFACEIMG\s*:\s*(.*)$/i))) {
+        res.face = normFace(m[1]);
+      } else if ((m = line.match(/^\s*IMEBADGE\s*:\s*(.*)$/i))) {
+        res.badge = (m[1] || "").trim();
       } else if ((m = line.match(/^\s*FACEIMG\s*:\s*(.*)$/i))) {
         res.face = normFace(m[1]);
+        if (window.console && console.warn) {
+          console.warn(
+            "[InteractiveMapNpc] FACEIMG deprecated, használd az IMEFACEIMG kulcsszót!"
+          );
+        }
       }
     }
     return res;
@@ -255,7 +343,12 @@
         0,
         true
       );
-      bmp.addLoadListener(() => drawCover(this.contents, bmp));
+      bmp.addLoadListener(() => {
+        drawCover(this.contents, bmp);
+        if (this._poi.badge) {
+          drawBadgePill(this.contents, String(this._poi.badge || ""));
+        }
+      });
     }
   }
   function drawCover(c, bmp) {
@@ -267,6 +360,63 @@
       sx = (bmp.width - sw) / 2,
       sy = (bmp.height - sh) / 2;
     c.blt(bmp, sx, sy, sw, sh, 0, 0, CW, CH);
+  }
+
+  function drawBadgePill(c, text) {
+    text = (text || "").trim();
+    if (!text) return;
+
+    const padX = 6,
+      padY = 4;
+    const margin = 4;
+    const oldSize = c.fontSize;
+    const oldColor = c.textColor;
+    const oldOutline = c.outlineColor;
+    const oldOLW = c.outlineWidth;
+
+    c.fontSize = BADGE_FONT;
+    c.outlineWidth = 0;
+    c.textColor = "#ffffff";
+
+    // szélesség mérés
+    const wText = c.measureTextWidth(text);
+    const pillW = Math.min(c.width - margin * 2, wText + padX * 2);
+    const pillH = c.fontSize + padY * 2;
+
+    // háttér (lekerekített téglalap)
+    const rx = margin,
+      ry = margin;
+    const rw = pillW,
+      rh = pillH;
+    const r = 8;
+
+    // bitmapen nincs path, ezért egyszerű “kocka + körök” stílus (elég jó)
+    // háttér téglalap
+    c.fillRect(rx + r, ry, rw - 2 * r, rh, "#000000");
+    c.fillRect(rx, ry + r, rw, rh - 2 * r, "#000000");
+    // sarkok (körök)
+    c.drawCircle(rx + r, ry + r, r, "#000000");
+    c.drawCircle(rx + rw - r, ry + r, r, "#000000");
+    c.drawCircle(rx + r, ry + rh - r, r, "#000000");
+    c.drawCircle(rx + rw - r, ry + rh - r, r, "#000000");
+
+    // átlátszóság trükk: Window_Base Bitmap nem támogat alfát per draw,
+    // ezért használjunk sötétszürkét a fekete helyett, hogy “semi” hatású legyen.
+    // Ha szeretnél erősebb áttetszést: állítsd #111, #222 stb.
+    // (Ha van saját blit‑alpha helpered, cseréld arra.)
+
+    // szöveg
+    const tx = rx + (rw - wText) / 2;
+    const ty = ry + (rh - c.fontSize) / 2 - 2; // apró optikai korrekció
+    c.outlineWidth = 3;
+    c.outlineColor = "rgba(0,0,0,0.5)";
+    c.drawText(text, tx, ty, wText, c.fontSize + 2, "left");
+
+    // visszaállítás
+    c.fontSize = oldSize;
+    c.textColor = oldColor;
+    c.outlineColor = oldOutline;
+    c.outlineWidth = oldOLW;
   }
 
   class NpcPortraitText extends Window_Base {
@@ -291,13 +441,13 @@
         margin = 4;
 
       // Név
-      this.contents.fontSize = 18;
+      this.contents.fontSize = NAME_FONT;
       const nameLH = this.contents.fontSize + 2;
       this.contents.drawText(this._poi.name || "", 0, y, CW, nameLH, "center");
       y += nameLH + margin + 5;
 
       // Leírás
-      this.contents.fontSize = 16;
+      this.contents.fontSize = DESC_FONT;
       const lineH = this.contents.fontSize + 2;
       let desc = (this._poi.desc || "")
         .replace(/^"(.*)"$/s, "$1")
@@ -423,41 +573,97 @@
 
     _initFromEvent(ev) {
       const name = ev.characterName && ev.characterName();
-      if (!name) return;
+      const tileId = ev.tileId ? ev.tileId() : 0;
 
-      const sheet = ImageManager.loadCharacter(name);
+      if (name) {
+        // --- EREDETI character-sheet ág (marad) ---
+        const sheet = ImageManager.loadCharacter(name);
+        sheet.addLoadListener(() => {
+          if (this._dead) return;
+          IRMap.unregisterClickable(this);
+          const big = ImageManager.isBigCharacter(name);
+          const pw = sheet.width / (big ? 3 : 12);
+          const ph = sheet.height / (big ? 4 : 8);
+          const idx = ev.characterIndex ? ev.characterIndex() : 0;
+          const baseX = (big ? 0 : (idx % 4) * 3) * pw;
+          const baseY = (big ? 0 : Math.floor(idx / 4) * 4) * ph;
 
-      sheet.addLoadListener(() => {
-        // ← arrow fn: helyes this
-        if (this._dead) return;
-        IRMap.unregisterClickable(this);
+          this._state = {
+            sheet,
+            sheetName: name,
+            idx,
+            big,
+            pw,
+            ph,
+            baseX,
+            baseY,
+            dir: -1,
+            pat: -1,
+          };
+          this._icon.bitmap = new Bitmap(pw, ph);
+          this._baseScale = Math.min(this._maxIconW / pw, this._maxIconH / ph);
+          this.__npcRefreshFrame(true);
+          this._bottomPad = 0;
+        });
+      } else if (tileId > 0) {
+        this._initFromTile(ev, tileId);
+      }
+    }
 
-        const big = ImageManager.isBigCharacter(name);
-        const pw = sheet.width / (big ? 3 : 12);
-        const ph = sheet.height / (big ? 4 : 8);
-        const idx = ev.characterIndex ? ev.characterIndex() : 0;
+    _initFromTile(ev, tileId) {
+      const tw = $gameMap.tileWidth();
+      const th = $gameMap.tileHeight();
+      const tileset = $gameMap.tileset();
+      if (!tileset || !tileset.tilesetNames) return;
 
-        const baseX = (big ? 0 : (idx % 4) * 3) * pw;
-        const baseY = (big ? 0 : Math.floor(idx / 4) * 4) * ph;
+      if (
+        Tilemap.isTileA1(tileId) ||
+        Tilemap.isTileA2(tileId) ||
+        Tilemap.isTileA3(tileId) ||
+        Tilemap.isTileA4(tileId)
+      ) {
+        console.warn(
+          "[InteractiveMapNpc] Event image is an A1–A4 autotile – not supported on the overlay (yet). Use A5/B/C/D/E or a character sheet."
+        );
+        return;
+      }
 
-        this._state = {
-          sheet,
-          sheetName: name,
-          idx,
-          big,
-          pw,
-          ph,
-          baseX,
-          baseY,
-          dir: -1,
-          pat: -1,
-        };
+      let setIndex, sx, sy, srcName, srcBmp;
 
-        this._icon.bitmap = new Bitmap(pw, ph);
-        this._baseScale = Math.min(this._maxIconW / pw, this._maxIconH / ph);
-        this.__npcRefreshFrame(true); // ← új, ütközésmentes név
-        this._bottomPad = 0;
+      if (Tilemap.isTileA5(tileId)) {
+        const idx = tileId - Tilemap.TILE_ID_A5;
+        setIndex = 4;
+        sx = (idx % 8) * tw;
+        sy = Math.floor(idx / 8) * th;
+      } else {
+        setIndex = 5 + Math.floor(tileId / 256);
+        const idx = tileId % 256;
+        sx = (idx % 8) * tw;
+        sy = Math.floor(idx / 8) * th;
+      }
+
+      srcName = tileset.tilesetNames[setIndex];
+      if (!srcName) return;
+
+      srcBmp = ImageManager.loadTileset(srcName);
+      srcBmp.addLoadListener(() => {
+        this._icon.bitmap = new Bitmap(tw, th);
+        this._icon.bitmap.blt(srcBmp, sx, sy, tw, th, 0, 0);
+        this._baseScale = Math.min(this._maxIconW / tw, this._maxIconH / th);
       });
+
+      this._state = {
+        sheet: null,
+        sheetName: srcName,
+        idx: -1,
+        big: false,
+        pw: tw,
+        ph: th,
+        baseX: sx,
+        baseY: sy,
+        dir: -1,
+        pat: -1,
+      };
     }
 
     __npcRefreshFrame(force = false) {
@@ -478,7 +684,6 @@
     }
 
     updateLayout(nameText) {
-      // ─── 1. Koordináták ─────────────────────────────────────────────
       const pos = IRMap.worldToImage(this._ev.x, this._ev.y) || {};
       const cam = this._win.cameraRect();
       const scale = this._win.coverScale();
@@ -505,15 +710,14 @@
         bm.clear();
         bm.drawText(nameText || "", 0, 0, bm.width, bm.height, "center");
 
-        // sprite‑magasság (anchor 0.5)  → label mindig alá kerüljön
         const iconH = this._icon.bitmap ? this._icon.bitmap.height : 0;
-        const pad = this._icon._bottomPadPx || 0; // transzparens padding
-        const gap = 2; // pici rés
+        const pad = this._icon._bottomPadPx || 0;
+        const gap = 2;
 
-        const localY = iconH / 2 - pad + gap; // sprite‑középtől lefelé
+        const localY = iconH / 2 - pad + gap;
 
         const sIcon = this._icon.scale.y;
-        this._label.scale.set(1 / sIcon); // méretkompenzáció
+        this._label.scale.set(1 / sIcon);
         this._label.x = 0;
         this._label.y = localY;
       }
@@ -536,28 +740,47 @@
   }
 
   // ──────────────────────────────────────────────────────────────────
-  //  Overlay regisztráció (csak NPC/event)
+  //  Overlay regisztráció (csak NPC/event) – JAVÍTOTT VERZIÓ
   // ──────────────────────────────────────────────────────────────────
   IRMap.registerOverlay((scene, win) => {
-    const cfg0 = scene.mapConfig && scene.mapConfig();
-    if (!cfg0) return;
-
-    // Maszk (ha még nincs)
-    if (!win._poiMask) {
-      const g = new PIXI.Graphics();
-      g.beginFill(0xffffff);
-      g.drawRect(0, 0, win.contentsWidth(), win.contentsHeight());
-      g.endFill();
-      win._markerLayer.addChildAt(g, 0);
-      win._markerLayer.mask = g;
-      win._poiMask = g;
-    }
-
-    // Állapot-tárolók
     scene._npcSprites = [];
     scene._npcActive = null;
 
-    // Ablakok törlése
+    let lastDisplayedId = -1;
+
+    function getDisplayedId() {
+      const cfgNow = scene.mapConfig && scene.mapConfig();
+      if (!cfgNow) return 0;
+      if (cfgNow.mapId != null) return Number(cfgNow.mapId) || 0;
+      if (cfgNow.editorMapName && IRMap.findMapIdByEditorName) {
+        return IRMap.findMapIdByEditorName(String(cfgNow.editorMapName)) || 0;
+      }
+      return 0;
+    }
+
+    function ensureMask() {
+      if (!win._poiMask) {
+        const g = new PIXI.Graphics();
+        g.beginFill(0xffffff);
+        g.drawRect(0, 0, win.contentsWidth(), win.contentsHeight());
+        g.endFill();
+        if (win._markerLayer) {
+          win._markerLayer.addChildAt(g, 0);
+          win._markerLayer.mask = g;
+        }
+        win._poiMask = g;
+      } else {
+        const g = win._poiMask;
+        g.clear();
+        g.beginFill(0xffffff);
+        g.drawRect(0, 0, win.contentsWidth(), win.contentsHeight());
+        g.endFill();
+        if (win._markerLayer && win._markerLayer.mask !== g) {
+          win._markerLayer.mask = g;
+        }
+      }
+    }
+
     function clearPortraitWindows() {
       if (scene._npcImgWin) {
         scene.removeChild(scene._npcImgWin);
@@ -570,27 +793,45 @@
       scene._npcActive = null;
     }
 
-    // Teljes újraépítés
-    function rebuild() {
-      // Sprite-ok eltávolítása
-      scene._npcSprites.forEach((sp) => sp.parent && sp.parent.removeChild(sp));
+    function clearNpcSprites() {
+      scene._npcSprites.forEach((sp) => {
+        IRMap.unregisterClickable(sp);
+        if (sp.parent) sp.parent.removeChild(sp);
+      });
       scene._npcSprites = [];
-      clearPortraitWindows();
+    }
 
-      // Jelenlegi események lekérdezése
-      const all = $gameMap.events().map((ev) => ({ ev, info: imeTagInfo(ev) }));
-      const candidates = all.filter(
-        ({ ev, info }) =>
-          (info.present || FORCED_NPCS.has(ev.eventId())) &&
-          !HIDDEN_NPCS.has(ev.eventId())
-      );
+    function rebuild() {
+      clearNpcSprites();
+      clearPortraitWindows();
+      ensureMask();
+
+      const displayedId = getDisplayedId();
+      const playerId = $gameMap.mapId();
+
+      // jegyezzük fel az aktuális kijelzett mapot, hogy onTick ne rebuildeljen feleslegesen
+      lastDisplayedId = displayedId;
+
+      // csak akkor építünk, ha a kijelzett map == játékos valós pályája
+      if (displayedId !== playerId) return;
+
+      // jelöltek: IME tag alapján, + forced, - hidden
+      const candidates = $gameMap
+        .events()
+        .map((ev) => ({ ev, info: imeTagInfo(ev) }))
+        .filter(
+          ({ ev, info }) =>
+            (info.present || FORCED_NPCS.has(ev.eventId())) &&
+            !HIDDEN_NPCS.has(ev.eventId())
+        );
 
       for (const { ev, info } of candidates) {
         const meta = readPortraitMeta(ev);
         const customW = info.width > 0 ? info.width : ICON_W;
         const customH = info.height > 0 ? info.height : ICON_H;
-        const displayName = (
-          meta.name || ev.event().name.replace(NAME_TAG, "").trim()
+        const nameRaw = ev.event().name || "";
+        const dispName = (
+          meta.name || nameRaw.replace(NAME_TAG, "").trim()
         ).trim();
 
         const sp = new NpcSprite(
@@ -602,61 +843,24 @@
           customH
         );
         sp._poi = {
-          name: displayName,
+          name: dispName,
           desc: meta.desc || "",
           _evFace: meta.face || "",
+          badge: meta.badge || "",
         };
 
-        win._markerLayer.addChild(sp);
+        if (win._markerLayer) win._markerLayer.addChild(sp);
+        else scene.addChild(sp);
+
         scene._npcSprites.push(sp);
 
         if (!info.noint) {
-          IRMap.registerClickable(sp, () => onNpcClick(scene, win, sp), {
-            blink: true,
-          });
+          IRMap.registerClickable(sp, () => onNpcClick(sp), { blink: true });
         }
       }
     }
 
-    // Első építés
-    rebuild();
-
-    // Aktuális térkép ID követése
-    let lastMapId = Number(cfg0.mapId);
-
-    // Ha IRMap küld "map-switched" eseményt, újraépítjük
-    IRMap.on("map-switched", ({ to }) => {
-      const newMapId = Number(to);
-      if (newMapId !== lastMapId) {
-        lastMapId = newMapId;
-        clearPortraitWindows();
-        rebuild();
-      }
-    });
-
-    // Minden frame-ben frissítjük a sprite-ok pozícióját
-    const updateLayouts = () => {
-      for (const sp of scene._npcSprites) {
-        sp.updateLayout(sp._poi.name);
-      }
-    };
-    IRMap.on("update-tick", updateLayouts);
-
-    // Scene bezáráskor takarítunk
-    const onClose = ({ scene: sc }) => {
-      if (sc !== scene) return;
-      IRMap.off("map-switched");
-      IRMap.off("update-tick", updateLayouts);
-      IRMap.off("scene-close", onClose);
-      scene._npcSprites.forEach((sp) => IRMap.unregisterClickable(sp));
-      scene._npcSprites.forEach((sp) => sp.parent && sp.parent.removeChild(sp));
-      clearPortraitWindows();
-    };
-    IRMap.on("scene-close", onClose);
-
-    // NPC-kattintás kezelése
-    function onNpcClick(scene, win, spr) {
-      // bármely korábbi POI/NPC ablak bezárása
+    function onNpcClick(spr) {
       if (scene._poiImgWin) {
         scene.removeChild(scene._poiImgWin);
         scene._poiImgWin = null;
@@ -667,18 +871,15 @@
       }
       clearPortraitWindows();
 
-      // csak ha van meta
       if (!spr._poi.name || !spr._poi.desc) return;
 
       const baseX = win.x + win.padding;
       const baseY = win.y + win.padding;
 
-      // portré kép
       if (spr._poi._evFace) {
         scene._npcImgWin = new NpcPortraitImg(spr._poi, baseX, baseY);
         scene.addChild(scene._npcImgWin);
       }
-      // név + leírás
       scene._npcTxtWin = new NpcPortraitText(
         spr._poi,
         baseX,
@@ -689,7 +890,83 @@
       scene._npcActive = spr;
       IRMap.emit("poi-click", { poi: spr._poi });
     }
+
+    function onTick() {
+      const displayedId = getDisplayedId();
+      if (
+        displayedId !== lastDisplayedId ||
+        (!scene._npcSprites.length && displayedId === $gameMap.mapId())
+      ) {
+        rebuild();
+      }
+
+      scene._npcSprites.forEach((sp) =>
+        sp.updateLayout(sp._poi && sp._poi.name)
+      );
+    }
+
+    rebuild();
+    const onBmp = ({ scene: sc2 }) => {
+      if (sc2 === scene) rebuild();
+    };
+    const onSw = ({ scene: sc2 }) => {
+      if (sc2 === scene) rebuild();
+    };
+    const onCam = ({ win: w }) => {
+      if (w === win) ensureMask();
+    };
+
+    IRMap.on("update-tick", onTick);
+    IRMap.on("bitmap-loaded", onBmp);
+    IRMap.on("map-switched", onSw);
+    IRMap.on("camera-changed", onCam);
+
+    const onClose = ({ scene: sc }) => {
+      if (sc !== scene) return;
+      IRMap.off("update-tick", onTick);
+      IRMap.off("bitmap-loaded", onBmp);
+      IRMap.off("map-switched", onSw);
+      IRMap.off("camera-changed", onCam);
+      IRMap.off("scene-close", onClose);
+      clearNpcSprites();
+      clearPortraitWindows();
+    };
+    IRMap.on("scene-close", onClose);
   });
+
+  const _NpcPortraitImg_update = NpcPortraitImg.prototype.update;
+  NpcPortraitImg.prototype.update = function () {
+    _NpcPortraitImg_update.call(this);
+    if (TouchInput.isTriggered()) {
+      const x = TouchInput.x,
+        y = TouchInput.y;
+      const inside =
+        x >= this.x &&
+        x < this.x + this.width &&
+        y >= this.y &&
+        y < this.y + this.height;
+      if (inside) {
+        TouchInput._triggered = false;
+      }
+    }
+  };
+
+  const _NpcPortraitText_update = NpcPortraitText.prototype.update;
+  NpcPortraitText.prototype.update = function () {
+    _NpcPortraitText_update.call(this);
+    if (TouchInput.isTriggered()) {
+      const x = TouchInput.x,
+        y = TouchInput.y;
+      const inside =
+        x >= this.x &&
+        x < this.x + this.width &&
+        y >= this.y &&
+        y < this.y + this.height;
+      if (inside) {
+        TouchInput._triggered = false;
+      }
+    }
+  };
 
   // ─── 2) Game_System kibővítése, hogy mentse a két tömböt ────────────
   const _Npc_Game_System_initialize = Game_System.prototype.initialize;
@@ -707,7 +984,6 @@
     this._loadNpcPersistence();
   };
   DataManager._loadNpcPersistence = function () {
-    // a Game_Systemből tömbbé, Set-be töltés
     const gs = $gameSystem;
     HIDDEN_NPCS.clear();
     FORCED_NPCS.clear();
@@ -726,12 +1002,14 @@
   const _Npc_DataManager_extractSaveContents = DataManager.extractSaveContents;
   DataManager.extractSaveContents = function (contents) {
     _Npc_DataManager_extractSaveContents.apply(this, arguments);
+
     // elmentett tömbök átadása a Game_System-nek
     $gameSystem._hiddenNpcIds = contents.hiddenNpcIds || [];
     $gameSystem._forcedNpcIds = contents.forcedNpcIds || [];
+
+    this._loadNpcPersistence();
   };
 
-  // ─── 5) A plugin‐commandok frissítése, hogy Game_System-et is írjanak ──
   const _Npc_Interpreter_pluginCommand =
     Game_Interpreter.prototype.pluginCommand;
   Game_Interpreter.prototype.pluginCommand = function (command, args) {
@@ -748,7 +1026,6 @@
       if (id != null) {
         HIDDEN_NPCS.add(id);
         $gameSystem._hiddenNpcIds = Array.from(HIDDEN_NPCS);
-        // azonnali hatás: elrejtjük a sprite-ot
         const sc = IRMap.currentScene();
         sc &&
           sc._npcSprites.forEach((sp) => {
@@ -769,7 +1046,6 @@
         FORCED_NPCS.add(id);
         $gameSystem._hiddenNpcIds = Array.from(HIDDEN_NPCS);
         $gameSystem._forcedNpcIds = Array.from(FORCED_NPCS);
-        // azonnali hatás: újraépítjük a sprites-listát
         const sc = IRMap.currentScene();
         if (sc) {
           IRMap.emit("scene-close", { scene: sc });
